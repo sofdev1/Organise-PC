@@ -1,0 +1,33 @@
+version: '3.9'
+
+services:
+  organise-pc:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: organise-pc
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DRY_RUN=False
+    volumes:
+      # Mount user directories for organizing
+      - ${HOME}/Downloads:/home/user/Downloads
+      - ${HOME}/Pictures:/home/user/Pictures
+      - ${HOME}/Videos:/home/user/Videos
+      # Mount config for persistence
+      - ./config:/app/config
+      # Mount logs for inspection
+      - ./logs:/app/logs
+    # Use host network to access local files
+    network_mode: "host"
+    # Run with restart policy
+    restart: unless-stopped
+    # Resource limits (optional)
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 512M
+        reservations:
+          cpus: '1'
+          memory: 256M
