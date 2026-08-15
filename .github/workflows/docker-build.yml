@@ -43,7 +43,7 @@ jobs:
       uses: docker/metadata-action@v5
       with:
         images: |
-          ${{ secrets.DOCKER_USERNAME }}/organise-pc
+          ${{'sofdev1'}}/organise-pc
           ghcr.io/${{ github.repository }}
         tags: |
           type=ref,event=branch
@@ -58,5 +58,5 @@ jobs:
         push: ${{ github.event_name != 'pull_request' }}
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=registry,ref=${{ steps.meta.outputs.tags[0] }}
-        cache-to: type=inline
+        cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
+        cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max

@@ -10,19 +10,24 @@ services:
       - PYTHONUNBUFFERED=1
       - DRY_RUN=False
     volumes:
-      # Mount user directories for organizing
-      - ${HOME}/Downloads:/home/user/Downloads
-      - ${HOME}/Pictures:/home/user/Pictures
-      - ${HOME}/Videos:/home/user/Videos
+      # Mount user directories for organizing.
+      # Paths come from .env (see .env.example) — ${HOME} doesn't reliably
+      # resolve on native Windows PowerShell/cmd, so we use explicit vars.
+      - ${DOWNLOADS_PATH}:/home/user/Downloads
+      - ${PICTURES_PATH}:/home/user/Pictures
+      - ${VIDEOS_PATH}:/home/user/Videos
       # Mount config for persistence
       - ./config:/app/config
       # Mount logs for inspection
       - ./logs:/app/logs
-    # Use host network to access local files
-    network_mode: "host"
-    # Run with restart policy
+    # No networking needed — this app only watches local folders and
+    # never listens on a port or makes network calls. (network_mode: host
+    # was removed: it's Linux-only in practice and silently ignored /
+    # inconsistent on Docker Desktop for Windows and Mac.)
     restart: unless-stopped
-    # Resource limits (optional)
+    # Resource limits (only take effect under `docker stack deploy` /
+    # Swarm mode — a plain `docker compose up` ignores the `deploy:` key,
+    # so these are a no-op here but harmless to leave in for future use)
     deploy:
       resources:
         limits:

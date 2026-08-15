@@ -10,6 +10,13 @@ RUN apt-get update && apt-get install -y \
     libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Set HOME explicitly so Path.home() in config/settings.py resolves to
+# /home/user, matching the volume mount targets in docker-compose.yml.
+# Without this, Path.home() resolves to /root (the default for the root
+# user this container runs as) and the app would look in the wrong place.
+ENV HOME=/home/user
+RUN mkdir -p /home/user/Downloads /home/user/Pictures /home/user/Videos
+
 # Copy requirements
 COPY requirements.txt .
 
