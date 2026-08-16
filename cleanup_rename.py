@@ -27,8 +27,8 @@ so it can be dropped into the project root on its own.
 """
 
 import re
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 from config import settings
 

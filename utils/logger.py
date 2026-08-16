@@ -3,6 +3,7 @@ Simple shared logger — writes to console and to logs/activity.log
 """
 
 import logging
+
 from config import settings
 
 logger = logging.getLogger("pc_automation")

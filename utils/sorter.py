@@ -5,6 +5,7 @@ Only acts inside DOWNLOADS_FOLDER. Unmatched extensions are left alone.
 
 import shutil
 from pathlib import Path
+
 from config import settings
 from utils.logger import log_action
 

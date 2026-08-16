@@ -13,12 +13,13 @@ Requirements:
 import shutil
 import subprocess
 from pathlib import Path
+
 from config import settings
 from utils.logger import log_action
 
 try:
-    from PIL import Image
     import pillow_heif
+    from PIL import Image
 
     pillow_heif.register_heif_opener()
     HEIC_SUPPORT = True

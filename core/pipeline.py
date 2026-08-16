@@ -11,8 +11,9 @@ Order matters:
 
 import os
 from pathlib import Path
+
 from config import settings
-from utils import sorter, screenshots, converter, duplicates, renamer
+from utils import converter, duplicates, renamer, screenshots, sorter
 
 # Duplicate hashes are tracked per-folder for the lifetime of the running process
 _KNOWN_HASHES = {

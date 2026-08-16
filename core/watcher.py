@@ -3,14 +3,15 @@ Watchdog-based event handlers for the 3 scoped folders.
 Reacts instantly to new/modified files — no polling.
 """
 
-import time
 import threading
-from watchdog.observers import Observer
+import time
+
 from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
 
 from config import settings
+from core import maintenance, pipeline
 from utils.logger import log_action
-from core import pipeline, maintenance
 
 # Small delay before processing, so we don't grab a file mid-write (e.g. large downloads)
 SETTLE_SECONDS = 2
