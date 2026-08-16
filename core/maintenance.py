@@ -22,7 +22,9 @@ def check_disk_space():
     percent_used = (usage.used / usage.total) * 100
 
     if percent_used >= settings.DISK_SPACE_WARNING_PERCENT:
-        log_action(f"WARNING: Disk usage at {percent_used:.1f}% (threshold {settings.DISK_SPACE_WARNING_PERCENT}%)")
+        log_action(
+            f"WARNING: Disk usage at {percent_used:.1f}% (threshold {settings.DISK_SPACE_WARNING_PERCENT}%)"
+        )
     else:
         log_action(f"Disk usage OK: {percent_used:.1f}% used")
 
@@ -57,13 +59,19 @@ def clean_temp_files():
         except (PermissionError, OSError):
             continue  # skip files in use — never force anything
 
-    log_action(f"Temp cleanup: {cleared} item(s) {'would be ' if settings.DRY_RUN else ''}cleared "
-               f"({freed_bytes / (1024*1024):.1f} MB freed)")
+    log_action(
+        f"Temp cleanup: {cleared} item(s) {'would be ' if settings.DRY_RUN else ''}cleared "
+        f"({freed_bytes / (1024*1024):.1f} MB freed)"
+    )
 
 
 def large_file_report():
     """Scans ONLY Downloads, Pictures, Videos. Report-only — nothing is moved."""
-    watched_folders = [settings.DOWNLOADS_FOLDER, settings.PICTURES_FOLDER, settings.VIDEOS_FOLDER]
+    watched_folders = [
+        settings.DOWNLOADS_FOLDER,
+        settings.PICTURES_FOLDER,
+        settings.VIDEOS_FOLDER,
+    ]
     threshold_bytes = settings.LARGE_FILE_THRESHOLD_MB * 1024 * 1024
     large_files = []
 
@@ -88,7 +96,9 @@ def large_file_report():
         for file, size in sorted(large_files, key=lambda x: -x[1]):
             f.write(f"{size / (1024*1024):.1f} MB  —  {file}\n")
 
-    log_action(f"Large file report generated: {len(large_files)} file(s) over {settings.LARGE_FILE_THRESHOLD_MB}MB")
+    log_action(
+        f"Large file report generated: {len(large_files)} file(s) over {settings.LARGE_FILE_THRESHOLD_MB}MB"
+    )
 
 
 def run_maintenance():

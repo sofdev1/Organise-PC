@@ -60,8 +60,13 @@ def sort_file(file_path: Path) -> Path:
     if grandparent_name in settings.SUBSORT_BY_EXTENSION_CATEGORIES:
         return file_path  # already one level deep in Documents/<ext>/ — done
 
-    if parent_name in _MANAGED_FOLDER_NAMES and parent_name not in settings.SUBSORT_BY_EXTENSION_CATEGORIES:
-        return file_path  # sitting in a managed folder that doesn't need further sorting
+    if (
+        parent_name in _MANAGED_FOLDER_NAMES
+        and parent_name not in settings.SUBSORT_BY_EXTENSION_CATEGORIES
+    ):
+        return (
+            file_path  # sitting in a managed folder that doesn't need further sorting
+        )
 
     category = _category_for(file_path)
     if category is None:
@@ -88,7 +93,9 @@ def sort_file(file_path: Path) -> Path:
             dest_folder.mkdir(parents=True, exist_ok=True)
             shutil.move(str(file_path), str(target_path))
         except OSError as e:
-            log_action(f"FAILED to sort {file_path.name}: {e} — file left as-is, continuing")
+            log_action(
+                f"FAILED to sort {file_path.name}: {e} — file left as-is, continuing"
+            )
             return file_path  # don't crash the whole run over one locked/permission-denied file
         log_action(f"Sorted: {file_path.name} -> {dest_label}")
         return target_path

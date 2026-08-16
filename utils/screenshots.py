@@ -42,22 +42,30 @@ def organize_screenshot(file_path: Path) -> Path:
     timestamp = mtime.strftime(settings.RENAME_DATE_FORMAT)
 
     root = settings.PICTURES_FOLDER if media_type == "image" else settings.VIDEOS_FOLDER
-    dest_folder = root / settings.SCREENSHOT_DEST_FOLDER_NAME / media_type / month_folder
+    dest_folder = (
+        root / settings.SCREENSHOT_DEST_FOLDER_NAME / media_type / month_folder
+    )
     new_name = f"Screenshot_{media_type}_{timestamp}{ext}"
     target_path = dest_folder / new_name
 
     counter = 1
     while target_path.exists():
-        target_path = dest_folder / f"Screenshot_{media_type}_{timestamp}_{counter}{ext}"
+        target_path = (
+            dest_folder / f"Screenshot_{media_type}_{timestamp}_{counter}{ext}"
+        )
         counter += 1
 
     if settings.DRY_RUN:
-        log_action(f"Would organize screenshot: {file_path.name} -> {target_path.relative_to(root)}")
+        log_action(
+            f"Would organize screenshot: {file_path.name} -> {target_path.relative_to(root)}"
+        )
         return file_path
     else:
         dest_folder.mkdir(parents=True, exist_ok=True)
         shutil.move(str(file_path), str(target_path))
-        log_action(f"Organized screenshot: {file_path.name} -> {target_path.relative_to(root)}")
+        log_action(
+            f"Organized screenshot: {file_path.name} -> {target_path.relative_to(root)}"
+        )
         return target_path
 
 

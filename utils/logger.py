@@ -9,7 +9,9 @@ logger = logging.getLogger("pc_automation")
 logger.setLevel(logging.INFO)
 
 if not logger.handlers:
-    formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s", "%Y-%m-%d %H:%M:%S")
+    formatter = logging.Formatter(
+        "%(asctime)s | %(levelname)s | %(message)s", "%Y-%m-%d %H:%M:%S"
+    )
 
     file_handler = logging.FileHandler(settings.LOG_FILE, encoding="utf-8")
     file_handler.setFormatter(formatter)

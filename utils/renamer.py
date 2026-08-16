@@ -66,7 +66,10 @@ def rename_file(file_path: Path) -> Path:
     # Guard against collisions within the same run
     counter = 1
     while new_path.exists():
-        new_path = file_path.parent / f"{clean_stem}_{ext}_{timestamp}_{counter}{file_path.suffix}"
+        new_path = (
+            file_path.parent
+            / f"{clean_stem}_{ext}_{timestamp}_{counter}{file_path.suffix}"
+        )
         counter += 1
 
     if settings.DRY_RUN:
@@ -76,7 +79,9 @@ def rename_file(file_path: Path) -> Path:
         try:
             file_path.rename(new_path)
         except OSError as e:
-            log_action(f"FAILED to rename {file_path.name}: {e} — file left as-is, continuing")
+            log_action(
+                f"FAILED to rename {file_path.name}: {e} — file left as-is, continuing"
+            )
             return file_path  # don't crash the whole run over one locked/permission-denied file
         log_action(f"Renamed: {file_path.name} -> {new_path.name}")
         return new_path

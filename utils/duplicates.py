@@ -31,7 +31,9 @@ def _hash_file(path: Path, chunk_size: int = 65536) -> str:
                 sha256.update(chunk)
         digest = sha256.hexdigest()
     except OSError as e:
-        log_action(f"FAILED to hash {path.name}: {e} — skipping duplicate check for this file")
+        log_action(
+            f"FAILED to hash {path.name}: {e} — skipping duplicate check for this file"
+        )
         return ""
 
     _HASH_CACHE[key] = (stat.st_mtime, stat.st_size, digest)
@@ -64,7 +66,9 @@ def check_and_flag_duplicate(file_path: Path, known_hashes: dict) -> bool:
         target = dup_folder / file_path.name
 
         if settings.DRY_RUN:
-            log_action(f"Would flag duplicate: {file_path.name} (same content as {original.name}) -> {target}")
+            log_action(
+                f"Would flag duplicate: {file_path.name} (same content as {original.name}) -> {target}"
+            )
         else:
             try:
                 dup_folder.mkdir(exist_ok=True)
@@ -72,9 +76,13 @@ def check_and_flag_duplicate(file_path: Path, known_hashes: dict) -> bool:
                     target = dup_folder / f"{file_path.stem}_dup{file_path.suffix}"
                 shutil.move(str(file_path), str(target))
             except OSError as e:
-                log_action(f"FAILED to move duplicate {file_path.name}: {e} — file left as-is, continuing")
+                log_action(
+                    f"FAILED to move duplicate {file_path.name}: {e} — file left as-is, continuing"
+                )
                 return False  # don't crash the whole run over one locked/permission-denied file
-            log_action(f"Moved duplicate: {file_path.name} (same content as {original.name}) -> {target}")
+            log_action(
+                f"Moved duplicate: {file_path.name} (same content as {original.name}) -> {target}"
+            )
         return True
 
     known_hashes[file_hash] = file_path

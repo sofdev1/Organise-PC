@@ -40,8 +40,15 @@ PAGE_SIZE = 20
 # .dl_, .ex_, .ch_, .bi_, .da_, .ic_, .pr_, .in_, .up_, .xp_, .AV_) PLUS the
 # extra extensions listed below (driver/installer files that don't end in
 # an underscore themselves, but are the same kind of file: .dll, .inf, .cat).
-TARGET_EXTENSIONS = "ends_with_underscore"  # "ends_with_underscore" | None | a list like ["dl_", "ex_"]
-EXTRA_EXTENSIONS = ["dll", "inf", "cat","ini"]  # matched case-insensitively, in addition to TARGET_EXTENSIONS
+TARGET_EXTENSIONS = (
+    "ends_with_underscore"  # "ends_with_underscore" | None | a list like ["dl_", "ex_"]
+)
+EXTRA_EXTENSIONS = [
+    "dll",
+    "inf",
+    "cat",
+    "ini",
+]  # matched case-insensitively, in addition to TARGET_EXTENSIONS
 
 
 def _matches_scope(ext: str) -> bool:
@@ -58,6 +65,7 @@ def _matches_scope(ext: str) -> bool:
 # Self-contained helpers (no dependency on utils/ beyond what's guaranteed
 # to exist, so this script works even if your utils/ folder is out of date)
 # ---------------------------------------------------------------------------
+
 
 def _date_pattern_for_format(fmt: str) -> str:
     """Builds a regex fragment matching any timestamp produced by `fmt` —
@@ -99,7 +107,7 @@ def _paginate(lines, page_size=PAGE_SIZE, title="Changes"):
         return
     print(f"\n{title}: {total} total\n" + "=" * 50)
     for i in range(0, total, page_size):
-        page = lines[i:i + page_size]
+        page = lines[i : i + page_size]
         start_num, end_num = i + 1, min(i + page_size, total)
         for offset, line in enumerate(page):
             print(f"{start_num + offset:>4}. {line}")
@@ -109,8 +117,14 @@ def _paginate(lines, page_size=PAGE_SIZE, title="Changes"):
             print(f"End of list ({total} total).\n")
             break
         print("-" * 50)
-        user_input = input(f"Showing {start_num}-{end_num} of {total}. "
-                            f"Press Enter for next {min(page_size, remaining)} (or 'q' to stop): ").strip().lower()
+        user_input = (
+            input(
+                f"Showing {start_num}-{end_num} of {total}. "
+                f"Press Enter for next {min(page_size, remaining)} (or 'q' to stop): "
+            )
+            .strip()
+            .lower()
+        )
         if user_input == "q":
             print(f"Stopped. {remaining} more item(s) not shown.\n")
             break
@@ -119,6 +133,7 @@ def _paginate(lines, page_size=PAGE_SIZE, title="Changes"):
 # ---------------------------------------------------------------------------
 # Core logic
 # ---------------------------------------------------------------------------
+
 
 def _strip_suffix(file_path: Path):
     """If file_path matches our own '_<ext>_<date>[_<N>]' rename format AND its
@@ -132,7 +147,9 @@ def _strip_suffix(file_path: Path):
 
     date_pattern = _date_pattern_for_format(settings.RENAME_DATE_FORMAT)
     # Optional trailing "_N" collision counter (e.g. "..._15082026_1")
-    pattern = re.compile(rf"^(?P<original>.+)_{re.escape(ext)}_{date_pattern}(?:_\d+)?$")
+    pattern = re.compile(
+        rf"^(?P<original>.+)_{re.escape(ext)}_{date_pattern}(?:_\d+)?$"
+    )
 
     match = pattern.match(stem)
     if not match:
@@ -160,7 +177,11 @@ def run():
     print("Scanning: Downloads, Pictures, Videos ...")
 
     actions = []
-    folders = [settings.DOWNLOADS_FOLDER, settings.PICTURES_FOLDER, settings.VIDEOS_FOLDER]
+    folders = [
+        settings.DOWNLOADS_FOLDER,
+        settings.PICTURES_FOLDER,
+        settings.VIDEOS_FOLDER,
+    ]
 
     for folder in folders:
         if not folder.exists():
@@ -176,7 +197,9 @@ def run():
                 continue
 
             if DRY_RUN:
-                actions.append(f"Would restore: {file_path.name} -> {restored_path.name}")
+                actions.append(
+                    f"Would restore: {file_path.name} -> {restored_path.name}"
+                )
             else:
                 file_path.rename(restored_path)
                 actions.append(f"Restored: {file_path.name} -> {restored_path.name}")
@@ -184,7 +207,9 @@ def run():
     _paginate(actions, title="Filenames to restore")
 
     if DRY_RUN:
-        print("\nNothing was actually renamed. Set DRY_RUN = False in this script to apply it for real.")
+        print(
+            "\nNothing was actually renamed. Set DRY_RUN = False in this script to apply it for real."
+        )
     else:
         print("\nDone. Original filenames restored where matched.")
 

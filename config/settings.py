@@ -90,8 +90,12 @@ MAINTENANCE_ENABLED = True
 MAINTENANCE_INTERVAL_HOURS = 6
 
 DISK_SPACE_WARNING_PERCENT = 90  # warn if usage crosses this %
-LARGE_FILE_THRESHOLD_MB = 500     # flag files bigger than this, in the 3 watched folders only
-TEMP_CLEAN_ENABLED = True         # only clears OS temp dirs, never your Downloads/Pictures/Videos
+LARGE_FILE_THRESHOLD_MB = (
+    500  # flag files bigger than this, in the 3 watched folders only
+)
+TEMP_CLEAN_ENABLED = (
+    True  # only clears OS temp dirs, never your Downloads/Pictures/Videos
+)
 
 # ============================================================
 # LOGGING

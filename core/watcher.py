@@ -26,7 +26,9 @@ class DownloadsHandler(FileSystemEventHandler):
             self._handle(event.dest_path)
 
     def _handle(self, path):
-        threading.Timer(SETTLE_SECONDS, pipeline.process_downloads_file, args=[_as_path(path)]).start()
+        threading.Timer(
+            SETTLE_SECONDS, pipeline.process_downloads_file, args=[_as_path(path)]
+        ).start()
 
 
 class MediaHandler(FileSystemEventHandler):
@@ -39,11 +41,14 @@ class MediaHandler(FileSystemEventHandler):
             self._handle(event.dest_path)
 
     def _handle(self, path):
-        threading.Timer(SETTLE_SECONDS, pipeline.process_media_file, args=[_as_path(path)]).start()
+        threading.Timer(
+            SETTLE_SECONDS, pipeline.process_media_file, args=[_as_path(path)]
+        ).start()
 
 
 def _as_path(path_str):
     from pathlib import Path
+
     return Path(path_str)
 
 
@@ -66,7 +71,9 @@ def start():
     observer = Observer()
 
     if settings.DOWNLOADS_FOLDER.exists():
-        observer.schedule(DownloadsHandler(), str(settings.DOWNLOADS_FOLDER), recursive=False)
+        observer.schedule(
+            DownloadsHandler(), str(settings.DOWNLOADS_FOLDER), recursive=False
+        )
 
     if settings.PICTURES_FOLDER.exists():
         observer.schedule(MediaHandler(), str(settings.PICTURES_FOLDER), recursive=True)

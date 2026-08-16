@@ -19,6 +19,7 @@ from utils.logger import log_action
 try:
     from PIL import Image
     import pillow_heif
+
     pillow_heif.register_heif_opener()
     HEIC_SUPPORT = True
 except ImportError:
@@ -34,7 +35,9 @@ def convert_heic_to_jpg(file_path: Path) -> Path:
         return file_path
 
     if not HEIC_SUPPORT:
-        log_action("Skipped HEIC conversion: pillow-heif not installed (pip install pillow-heif)")
+        log_action(
+            "Skipped HEIC conversion: pillow-heif not installed (pip install pillow-heif)"
+        )
         return file_path
 
     target_path = file_path.with_suffix(".jpg")
@@ -77,8 +80,19 @@ def convert_mov_to_mp4(file_path: Path) -> Path:
 
     try:
         subprocess.run(
-            ["ffmpeg", "-y", "-i", str(file_path), "-c:v", "libx264", "-c:a", "aac", str(target_path)],
-            check=True, capture_output=True,
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(file_path),
+                "-c:v",
+                "libx264",
+                "-c:a",
+                "aac",
+                str(target_path),
+            ],
+            check=True,
+            capture_output=True,
         )
         log_action(f"Converted: {file_path.name} -> {target_path.name}")
 
