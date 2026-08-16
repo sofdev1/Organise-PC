@@ -19,7 +19,7 @@ Automatically organizes, cleans, and maintains your **Downloads**, **Pictures**,
 
 **Scope guarantee:** every action is confined to `Downloads`, `Pictures`, and `Videos`. Temp cleanup only touches the OS temp directory. Nothing else on your PC is read, moved, renamed, or deleted. Folders listed in `DOWNLOADS_EXCLUDED_FOLDERS` are skipped entirely — the walk never even enters them.
 
-## Setup
+## Setup (local, without Docker)
 
 ### 1. Install Python dependencies
 ```bash
@@ -53,6 +53,101 @@ DRY_RUN = False
 ```
 Run `python main.py` again — it will now actually sort, rename, convert, and flag duplicates.
 
+## Running with Docker
+
+The app is fully containerized. This is the easiest way to run it without managing a local Python environment, and it's what the CI/CD pipeline builds and publishes automatically on every push.
+
+### 1. Prerequisites
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and **running** (check the whale icon in your system tray shows "Engine running")
+
+### 2. Configure your folder paths
+Docker needs your real Windows folder paths mounted into the container. Copy the example env file:
+```powershell
+copy .env.example .env
+```
+Edit `.env` and replace `YourUsername` with your actual Windows username (find it with `echo $env:USERNAME` in PowerShell):
+```dotenv
+DOWNLOADS_PATH=C:/Users/YourUsername/Downloads
+PICTURES_PATH=C:/Users/YourUsername/Pictures
+VIDEOS_PATH=C:/Users/YourUsername/Videos
+```
+> Why not `${HOME}`? On native Windows PowerShell/cmd, `$HOME` doesn't reliably resolve the way it does on Linux/Mac — explicit paths in `.env` avoid that entirely. `.env` is git-ignored, so your real paths never get committed.
+
+### 3. Build and run
+```powershell
+docker compose up --build
+```
+This builds the image from the `Dockerfile`, mounts your Downloads/Pictures/Videos folders (read-write) plus `./config` and `./logs`, and starts `main.py` inside the container. Logs land in `./logs/activity.log` on your host machine exactly as they would running locally.
+
+Stop it with `Ctrl+C`, or run it detached:
+```powershell
+docker compose up --build -d
+docker compose logs -f          # tail the logs
+docker compose down             # stop and remove the container
+```
+
+### 4. How the container maps paths
+Inside the container, the app's `HOME` is explicitly set to `/home/user` (not the container's default `/root`), and your host folders are mounted to `/home/user/Downloads`, `/home/user/Pictures`, `/home/user/Videos` — matching what `config/settings.py`'s `Path.home()` resolves to. If you ever edit the Dockerfile's `ENV HOME=...` line, update the matching mount targets in `docker-compose.yml` too, or the app will silently look in the wrong place.
+
+### 5. Pre-built images
+Every push to `main` publishes a fresh image to both:
+- Docker Hub: `sofdev1/organise-pc:main`
+- GitHub Container Registry: `ghcr.io/sofdev1/organise-pc:main`
+
+To run the published image directly without building locally:
+```powershell
+docker pull sofdev1/organise-pc:main
+docker run -d --name organise-pc `
+  -v "C:\Users\YourUsername\Downloads:/home/user/Downloads" `
+  -v "C:\Users\YourUsername\Pictures:/home/user/Pictures" `
+  -v "C:\Users\YourUsername\Videos:/home/user/Videos" `
+  sofdev1/organise-pc:main
+```
+
+## GitHub Actions / CI-CD Workflows
+
+Three workflows live in `.github/workflows/` and run automatically on GitHub:
+
+### `python-lint.yml` — code quality checks
+**Triggers:** every push and pull request to `main`.
+**What it does:** runs `black --check .` (formatting), `isort --check-only .` (import order), and `flake8` (syntax/style) against the source. It fails the build if any file isn't already formatted/sorted correctly — it does **not** auto-fix anything, just reports.
+
+To fix locally before pushing:
+```powershell
+pip install black isort
+black .
+isort .
+git add .
+git commit -m "Apply formatting"
+```
+
+### `docker-build.yml` — build and publish the Docker image
+**Triggers:** every push to `main`, every version tag (`v*`), and pull requests to `main` (build-only, no push, on PRs).
+**What it does:**
+1. Checks out the repo
+2. Logs into Docker Hub and GitHub Container Registry (skipped on PRs)
+3. Lowercases the repository name (Docker registries reject uppercase — `Organise-PC` becomes `organise-pc`)
+4. Builds tags/labels from the commit metadata
+5. Builds and pushes the image to both registries, with layer caching to speed up future builds
+
+**Required secrets** (repo → Settings → Secrets and variables → Actions):
+| Secret name | Value |
+|---|---|
+| `DOCKERHUB_USERNAME` | Your Docker Hub username |
+| `DOCKERHUB_TOKEN` | A Docker Hub access token with **Read & Write** permission (Account Settings → Security → Personal access tokens on Docker Hub — never use your account password) |
+
+`GITHUB_TOKEN` (for GHCR) is provided automatically by GitHub Actions — no setup needed.
+
+### `release.yml` — tagged releases
+**Triggers:** pushing a git tag matching `v*` (e.g. `v1.0.0`).
+**What it does:** creates a GitHub Release for the tag, builds a Python distribution (`python -m build`), and uploads it as a release artifact.
+
+To cut a release:
+```powershell
+git tag v1.0.0
+git push origin v1.0.0
+```
+
 ## Auto-start on login (Windows)
 
 1. Run `scripts/install_startup.bat` (double-click it, or run from a terminal)
@@ -69,6 +164,7 @@ To stop it from auto-starting, run `scripts/uninstall_startup.bat`.
 
 - If running in a visible terminal: `Ctrl+C`
 - If running silently via Startup: open Task Manager, end the `pythonw.exe` process
+- If running via Docker: `docker compose down`
 
 ## Undoing a rename — `cleanup_rename.py`
 
@@ -110,10 +206,38 @@ pc-automation-suite/
 │   ├── install_startup.bat    # Adds auto-start shortcut
 │   ├── uninstall_startup.bat  # Removes it
 │   └── run_silent.vbs         # Launches main.py with no console window
+├── .github/
+│   └── workflows/
+│       ├── python-lint.yml    # black + isort + flake8 checks
+│       ├── docker-build.yml   # Builds & publishes to Docker Hub + GHCR
+│       └── release.yml        # Tagged GitHub Releases
+├── Dockerfile                  # Container image definition
+├── docker-compose.yml          # Local Docker run configuration
+├── .env.example                # Template for your real folder paths (copy to .env)
 └── logs/
     ├── activity.log           # Every action taken (or would-take, in dry run) — complete, unpaginated
     └── maintenance_report.txt # Latest large-file report
 ```
+
+## Troubleshooting
+
+**`ModuleNotFoundError` or dependency errors after `pip install -r requirements.txt`**
+Make sure you're in a fresh virtual environment (`python -m venv venv`, then activate it) before installing — installing into a stale or wrong Python environment is the most common cause.
+
+**Docker: app doesn't seem to find any files to organize**
+Check `.env` has your real Windows username, not the `YourUsername` placeholder — `docker compose up --build` silently mounts an empty/nonexistent path otherwise.
+
+**GitHub Actions: `docker/login-action` fails with "Username and password required"**
+The `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` secrets aren't set (or are misspelled) in the repo's Settings → Secrets and variables → Actions. Secret names are case-sensitive and must match exactly what the workflow file references.
+
+**GitHub Actions: `repository name ... must be lowercase`**
+Docker registries reject uppercase repo names. `docker-build.yml` already handles this by lowercasing `github.repository` into `env.REPO_LC` before using it in any image/cache reference — if you add new steps that reference the registry path, use `${{ env.REPO_LC }}`, not `${{ github.repository }}` directly.
+
+**GitHub push blocked: "Push cannot contain secrets"**
+GitHub's push protection caught a literal token/credential in a committed file. Never hardcode tokens in workflow YAML — always reference them via `${{ secrets.SECRET_NAME }}`. If this happens, revoke the exposed credential immediately (even if the push was blocked) and fix the file before retrying.
+
+**`black --check .` / `isort --check-only .` fail in CI**
+These only check, they don't fix. Run `black .` and `isort .` locally, review the diff, then commit.
 
 ## Notes
 - Duplicate detection compares file **content**, not filename — a renamed copy of the same file is still caught. Files already sitting inside a `Duplicates/` folder are never re-compared against each other, so a nested `Duplicates/Duplicates/` folder can't form.
