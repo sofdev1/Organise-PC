@@ -11,34 +11,16 @@ Order matters:
 
 import os
 from pathlib import Path
-
+from collections import defaultdict
 from config import settings
-from utils import converter, duplicates, renamer, screenshots, sorter
+from utils import sorter, screenshots, converter, duplicates, renamer
 
-# Duplicate hashes are tracked per-folder for the lifetime of the running process
-_KNOWN_HASHES = {
-    "downloads": {},
-    "pictures": {},
-    "videos": {},
-}
-
-
-def _folder_key(path: Path) -> str:
-    try:
-        path.relative_to(settings.DOWNLOADS_FOLDER)
-        return "downloads"
-    except ValueError:
-        pass
-    try:
-        path.relative_to(settings.PICTURES_FOLDER)
-        return "pictures"
-    except ValueError:
-        pass
-    try:
-        path.relative_to(settings.VIDEOS_FOLDER)
-        return "videos"
-    except ValueError:
-        return "downloads"
+# Duplicate hashes are tracked PER FOLDER (keyed by the file's actual parent
+# directory at the time it's checked, i.e. after sorting has already moved it
+# to its destination folder). This means duplicate detection only ever compares
+# files that live side-by-side in the same folder — not across the whole
+# Downloads/Pictures/Videos tree.
+_KNOWN_HASHES = defaultdict(dict)
 
 
 def process_downloads_file(file_path: Path):
@@ -49,9 +31,8 @@ def process_downloads_file(file_path: Path):
         file_path = sorter.sort_file(file_path)
 
     if settings.DUPLICATE_CHECK_ENABLED:
-        is_dup = duplicates.check_and_flag_duplicate(
-            file_path, _KNOWN_HASHES["downloads"]
-        )
+        folder_key = str(file_path.parent)
+        is_dup = duplicates.check_and_flag_duplicate(file_path, _KNOWN_HASHES[folder_key])
         if is_dup:
             return  # duplicate moved out — nothing left to rename
 
@@ -77,8 +58,8 @@ def process_media_file(file_path: Path):
         file_path = converter.convert_mov_to_mp4(file_path)
 
     if settings.DUPLICATE_CHECK_ENABLED:
-        key = _folder_key(file_path)
-        duplicates.check_and_flag_duplicate(file_path, _KNOWN_HASHES[key])
+        folder_key = str(file_path.parent)
+        duplicates.check_and_flag_duplicate(file_path, _KNOWN_HASHES[folder_key])
 
 
 def run_initial_sweep():
@@ -87,13 +68,18 @@ def run_initial_sweep():
     pruned from the walk entirely and never descended into — not just skipped per-file.
     """
     if settings.DOWNLOADS_FOLDER.exists():
+        downloads_files = []
         for root, dirnames, filenames in os.walk(settings.DOWNLOADS_FOLDER):
             root_path = Path(root)
             dirnames[:] = [
-                d for d in dirnames if not sorter._is_excluded(root_path / d)
+                d for d in dirnames
+                if not sorter._is_excluded(root_path / d)
             ]
             for name in sorted(filenames):
-                process_downloads_file(root_path / name)
+                downloads_files.append(root_path / name)
+
+        for f in downloads_files:
+            process_downloads_file(f)
 
     if settings.PICTURES_FOLDER.exists():
         for f in sorted(settings.PICTURES_FOLDER.rglob("*")):
