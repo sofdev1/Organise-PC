@@ -46,6 +46,19 @@ def _already_renamed(stem: str, ext: str) -> bool:
     return bool(pattern.match(stem))
 
 
+def _is_excluded_extension(ext: str) -> bool:
+    """
+    True if this extension should never be renamed — driver/installer files
+    (legacy Windows cache extensions ending in "_", plus explicit ones like
+    .dll, .inf, .cat, .ini) can break if renamed, so RENAME_EXCLUDED_EXTENSIONS
+    keeps them untouched even when RENAME_ENABLED is True.
+    """
+    if ext.endswith("_"):
+        return True
+    excluded = getattr(settings, "RENAME_EXCLUDED_EXTENSIONS", [])
+    return ext.lower() in (e.lower() for e in excluded)
+
+
 def rename_file(file_path: Path) -> Path:
     """Renames a single file into Name_ext_date format. Returns the new path."""
     if not file_path.is_file():
@@ -53,6 +66,9 @@ def rename_file(file_path: Path) -> Path:
 
     stem = file_path.stem
     ext = file_path.suffix.lstrip(".")
+
+    if _is_excluded_extension(ext):
+        return file_path  # driver/installer-style extension — never rename
 
     if _already_renamed(stem, ext):
         return file_path  # already in our format for this exact extension — skip

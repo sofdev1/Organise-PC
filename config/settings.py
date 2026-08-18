@@ -54,6 +54,14 @@ SUBSORT_BY_EXTENSION_CATEGORIES = ["Documents"]
 RENAME_ENABLED = True
 RENAME_DATE_FORMAT = "%d%m%Y"
 
+# Extensions that are NEVER renamed, even when RENAME_ENABLED is True. Driver
+# and installer files (legacy Windows cache extensions like .dl_, .ex_, .ch_,
+# plus .dll, .inf, .cat, .ini) sometimes need their exact original filename to
+# install correctly — renaming them can break a driver install. Extensions
+# ending in "_" are matched automatically (the legacy Windows compressed-file
+# scheme); add any other extensions to the explicit list below.
+RENAME_EXCLUDED_EXTENSIONS = ["dll", "inf", "cat", "ini"]
+
 # ============================================================
 # DUPLICATE DETECTION (Downloads, Pictures, Videos)
 # Matches by file content hash (SHA-256), not just filename.
