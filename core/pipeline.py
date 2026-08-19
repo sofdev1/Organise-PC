@@ -14,17 +14,8 @@ from collections import defaultdict
 from pathlib import Path
 
 from config import settings
-from utils import (
-    ai_namer,
-    ai_rename_registry,
-    approval_ui,
-    converter,
-    duplicates,
-    renamer,
-    screenshots,
-    sorter,
-    telegram_bot,
-)
+from utils import (ai_namer, ai_rename_registry, approval_ui, converter,
+                   duplicates, renamer, screenshots, sorter, telegram_bot)
 from utils.logger import log_action
 
 # Duplicate hashes are tracked PER FOLDER (keyed by the file's actual parent
