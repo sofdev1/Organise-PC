@@ -185,6 +185,8 @@ git add .
 git commit -m "Apply formatting"
 ```
 
+Note: `isort` is configured via `pyproject.toml` (`profile = "black"`) so its import ordering matches Black's formatting style instead of conflicting with it. If you ever recreate `pyproject.toml` on Windows, see the BOM troubleshooting note below — writing it with `Out-File -Encoding utf8` breaks isort's ability to read it.
+
 ### `docker-build.yml` — build and publish the Docker image
 **Triggers:** every push to `main`, every version tag (`v*`), and pull requests to `main` (build-only, no push, on PRs).
 **What it does:**
@@ -285,6 +287,7 @@ pc-automation-suite/
 ├── Dockerfile                  # Container image definition
 ├── docker-compose.yml          # Local Docker run configuration
 ├── .env.example                # Template for your real folder paths (copy to .env)
+├── pyproject.toml              # isort config (`profile = "black"`) — must be saved as UTF-8 without BOM
 └── logs/
     ├── activity.log           # Every action taken (or would-take, in dry run) — complete, unpaginated
     └── maintenance_report.txt # Latest large-file report
@@ -362,6 +365,31 @@ GitHub's push protection caught a literal token/credential in a committed file. 
 
 **`black --check .` / `isort --check-only .` fail in CI**
 These only check, they don't fix. Run `black .` and `isort .` locally, review the diff, then commit.
+
+**`isort` warns `Failed to pull configuration information from ...pyproject.toml`, or errors with `Invalid statement (at line 1, column 1)`**
+This means `pyproject.toml` has a UTF-8 **BOM** (byte-order mark) at the start of the file — a common side effect of creating it with PowerShell's `Out-File -Encoding utf8`, which adds a BOM by default. TOML parsers can't read past the BOM, so isort silently fails to pick up `profile = "black"` and falls back to its default import style, which then disagrees with Black's formatting (e.g. isort's multi-import-per-line vs Black's one-per-line-with-trailing-comma).
+
+Rewrite the file without a BOM:
+```powershell
+# PowerShell 7+ (pwsh)
+@"
+[tool.isort]
+profile = "black"
+"@ | Out-File -Encoding utf8NoBOM pyproject.toml
+
+# Windows PowerShell 5.1 (no utf8NoBOM option) — fine since content is plain ASCII
+@"
+[tool.isort]
+profile = "black"
+"@ | Out-File -Encoding ascii pyproject.toml
+```
+Verify with `Format-Hex pyproject.toml` (older PowerShell versions don't support the `-Count` parameter, so just run it without arguments on this small file) — the file should start with `5B 74 6F 6F ...` (`[too...`), not `EF BB BF`. Then redo the formatting so isort actually applies the `black` profile:
+```powershell
+git checkout core/pipeline.py
+python -m isort core/pipeline.py
+black core/pipeline.py
+git diff core/pipeline.py
+```
 
 ## Notes
 - Duplicate detection compares file **content**, not filename — a renamed copy of the same file is still caught, but only within the same destination folder (see Troubleshooting above). Files already sitting inside a `Duplicates/` folder are never re-compared against each other, so a nested `Duplicates/Duplicates/` folder can't form.
