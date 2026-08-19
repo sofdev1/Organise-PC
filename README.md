@@ -17,6 +17,8 @@ Automatically organizes, cleans, and maintains your **Downloads**, **Pictures**,
 | Paginated startup report | Console | Every launch shows what changed, 20 items at a time — press Enter for the next page, or `q` to stop |
 | Crash-resilient file ops | All of the above | A single locked/permission-denied file is logged and skipped — it no longer halts the entire run |
 | Single-instance lock | Whole suite | Only one copy can ever run at a time — a second launch exits immediately instead of running alongside the first |
+| AI-suggested renaming | Downloads | Reads file content and suggests a descriptive name, with your approval (dialog or Telegram) — falls back to `Name_ext_date` if rejected/unavailable |
+| Telegram approval bot | Whole suite | Approve/reject rename suggestions from your phone; stays silent until you send it `/start`; supports instant message cleanup and `/clearall` |
 
 **Scope guarantee:** every action is confined to `Downloads`, `Pictures`, and `Videos`. Temp cleanup only touches the OS temp directory. Nothing else on your PC is read, moved, renamed, or deleted. Folders listed in `DOWNLOADS_EXCLUDED_FOLDERS` are skipped entirely — the walk never even enters them.
 
@@ -27,31 +29,66 @@ Automatically organizes, cleans, and maintains your **Downloads**, **Pictures**,
 pip install -r requirements.txt
 ```
 
-### AI-assisted renaming with a free Gemini API tier
+## AI-assisted renaming
 
-The optional AI renamer uses Google's Gemini API instead of Anthropic. Google
-currently lists Gemini 2.5 Flash-Lite with a free API tier, subject to rate
-limits. urlGemini API pricinghttps://ai.google.dev/gemini-api/docs/pricing
+Instead of (or alongside) the standard `Name_ext_date` convention, supported files can have their actual content read and a short, descriptive name suggested by AI — you approve or reject it before anything changes.
 
-1. Create a Gemini API key in Google AI Studio.
-2. Set it as the `GEMINI_API_KEY` environment variable.
-3. In `config/settings.py`, set:
+### 1. Get a Gemini API key
+The AI renamer uses Google's Gemini API. Google currently offers a free tier for Gemini 2.5 Flash-Lite, subject to rate limits — see Gemini API pricing at ai.google.dev/gemini-api/docs/pricing.
+1. Create a key in Google AI Studio (aistudio.google.com).
+2. Set it as the `GEMINI_API_KEY` environment variable (or in `.env` — see `.env.example`):
+```powershell
+$env:GEMINI_API_KEY="YOUR_API_KEY"
+```
+
+### 2. Enable it
+In `config/settings.py`:
 ```python
 AI_RENAME_ENABLED = True
 AI_RENAME_MODEL = "gemini-3.5-flash-lite"
 ```
+Only extensions listed in `AI_RENAME_EXTENSIONS` get content read — everything else always uses the standard convention untouched. `AI_RENAME_AUTO_APPROVE = True` skips the approval step entirely (renames instantly, no prompt) — leave it `False` if you want to review suggestions first.
 
-For PowerShell:
-```powershell
-$env:GEMINI_API_KEY="YOUR_API_KEY"
-python main.py
+**The AI step is always approval-based unless auto-approve is on**: Gemini only *suggests* a name — nothing is renamed until you approve it, and it always falls back to the standard `Name_ext_date` naming if the API is unavailable, rate-limited, times out, or you reject the suggestion.
+
+### 3. Choose how you approve: Windows dialog or Telegram
+
+**Windows dialog (default)** — a Yes/No popup appears on your screen for each suggestion, auto-dismissing to "No" after `AI_RENAME_APPROVAL_TIMEOUT_SECONDS`.
+
+**Telegram (optional, recommended if the suite runs silently in the background)** — suggestions are sent to your phone instead, so you don't need to be looking at the PC:
+
+1. `pip install python-telegram-bot>=21.0` (already in `requirements.txt`)
+2. Message **@BotFather** on Telegram → `/newbot` → copy the token it gives you
+3. Message **@userinfobot** (or similar) to get your own numeric chat ID
+4. Set in `.env` (or environment variables):
+```dotenv
+TELEGRAM_ENABLED=True
+TELEGRAM_BOT_TOKEN=your_bot_token
+TELEGRAM_CHAT_ID=your_chat_id
 ```
+5. **Open a chat with your bot and send `/start`.** This step is required — the bot stays completely silent, even if it's running and fully configured, until the configured chat sends `/start` at least once. This avoids it suddenly messaging you the moment the suite launches, before you've opened the chat yourself.
 
-The AI step remains approval-based: Gemini only suggests a name. The Windows
-Yes/No dialog must approve the suggestion before the file is renamed. If the
-API is unavailable, rate-limited, or fails, the existing `Name_ext_date`
-renaming logic is used instead.
+Once started, each suggestion arrives as a message with **Approve** / **Skip** buttons. This is fire-and-forget — the watcher sends the suggestion and immediately moves on to the next file, it never blocks waiting for your reply. The file keeps its original name until you tap something.
 
+**Bot commands** (shown in Telegram's `/` menu):
+
+| Command | What it does |
+|---|---|
+| `/start` | Activates the bot for this chat — required before any suggestions are sent |
+| `/help` | Lists all commands |
+| `/status` | Shows current settings, whether `/start` has been sent, pending suggestion count |
+| `/pending` | Lists files currently awaiting your approval |
+| `/skipall` | Skips every pending suggestion at once — those files keep their original names |
+| `/clearall` | Erases every message the bot has sent in this chat, all at once (see below) |
+
+**Message cleanup:** after you tap Approve/Skip, the confirmation message is controlled by `TELEGRAM_AUTO_DELETE_SECONDS` in `config/settings.py`:
+- `0` (default) — deletes **instantly**, right when you tap, so the chat never accumulates a scrollback of old renames
+- a positive number — deletes after that many seconds instead
+- `None` — disables auto-delete, keeps every message permanently
+
+This only ever removes the *Telegram message* — `logs/activity.log` always keeps the full permanent record regardless of what happens in the chat.
+
+**`/clearall`** wipes every message the bot has sent in that chat this session (suggestions, confirmations, other command replies) in one go — useful for tidying up after a busy sorting session, or as a global reset for the message history without touching any actual files or the log. Note: Telegram's Bot API only allows a bot to delete messages *it* sent — it can't delete messages you typed yourself.
 
 ### 2. Install ffmpeg (for MOV → MP4 conversion)
 - Windows: [download ffmpeg](https://ffmpeg.org/download.html) and add it to your PATH
@@ -227,12 +264,19 @@ pc-automation-suite/
 │   ├── duplicates.py          # SHA-256 content-hash duplicate detection
 │   ├── screenshots.py
 │   ├── converter.py
+│   ├── content_extractor.py   # Pulls text content from files for AI naming
+│   ├── ai_namer.py            # Calls Gemini to suggest a filename from content
+│   ├── ai_rename_registry.py  # Tracks in-flight AI rename suggestions
+│   ├── approval_ui.py         # Windows Yes/No dialog for approving suggestions
+│   ├── telegram_bot.py        # Telegram-based approval (alternative to the dialog)
 │   ├── paginate.py            # 20-at-a-time console pagination
 │   └── logger.py
 ├── scripts/
 │   ├── install_startup.bat    # Adds auto-start shortcut
 │   ├── uninstall_startup.bat  # Removes it
 │   └── run_silent.vbs         # Launches main.py with no console window
+├── tests/
+│   └── test_ai_rename_auto_approve.py
 ├── .github/
 │   └── workflows/
 │       ├── python-lint.yml    # black + isort + flake8 checks
@@ -286,6 +330,20 @@ If it prints `Organise_PC is already running (another instance holds the lock)`,
 **`ModuleNotFoundError` or dependency errors after `pip install -r requirements.txt`**
 Make sure you're in a fresh virtual environment (`python -m venv venv`, then activate it) before installing — installing into a stale or wrong Python environment is the most common cause.
 
+### Telegram
+
+**Bot doesn't send any suggestions, even though it's configured and running**
+Did you send `/start` to the bot's chat? It's required — the bot stays completely silent until the configured chat has sent `/start` at least once, even if `TELEGRAM_ENABLED`/token/chat ID are all correctly set. Check `/status` to confirm.
+
+**Suggestions still not arriving after `/start`**
+Check the log for a startup line confirming the bot actually launched: `Select-String -Path .\logs\activity.log -Pattern "Telegram"`. If you instead see a line about `python-telegram-bot` not being installed, or `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` not being set, the suite has already silently fallen back to the Windows dialog for every file — fix the missing piece and restart.
+
+**`/clearall` didn't delete something I expected**
+It can only delete messages the bot itself sent — not messages you typed, and not anything older than Telegram's ~48-hour deletion window. Anything it does delete is removed from its internal tracking too, so a second `/clearall` right after should report 0.
+
+**A suggestion's Approve/Skip buttons don't do anything when tapped**
+Most likely the suite was restarted (or crashed) after the suggestion was sent — pending suggestions only live in memory for that run, so a restart clears them. The buttons will just report "already expired" if you tap them afterward; the file simply keeps its original name.
+
 ### Docker
 
 **App doesn't seem to find any files to organize**
@@ -312,3 +370,5 @@ These only check, they don't fix. Run `black .` and `isort .` locally, review th
 - Folders inside Downloads listed in `DOWNLOADS_EXCLUDED_FOLDERS` are pruned from the scan entirely (not just skipped file-by-file) — the suite never descends into them, so it's safe to keep the project itself inside Downloads.
 - If a file can't be renamed/moved/hashed (locked by another program, permission denied, etc.), it's logged as a failure in `logs/activity.log` and skipped — it no longer stops the rest of the run.
 - Only one instance of the suite can run at a time (enforced via a local port lock, `54891` by default). A second launch — whether manual or from a duplicate Startup entry — exits immediately rather than running alongside the first.
+- AI rename suggestions never bypass approval unless `AI_RENAME_AUTO_APPROVE = True` — rejecting, ignoring, or any failure along the way (extraction, API, timeout) always falls back to the standard `Name_ext_date` convention, never leaves a file unrenamed or in a broken state.
+- The Telegram bot only ever acts on the single configured `TELEGRAM_CHAT_ID` — messages from any other chat are ignored outright, even if someone finds the bot by its username.
