@@ -133,6 +133,13 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 # a given file if Telegram isn't reachable/configured at that moment).
 # "dialog"   -> always use the Windows message box.
 AI_RENAME_APPROVAL_MODE = "telegram" if TELEGRAM_ENABLED else "dialog"
+# After you tap Approve/Skip, the result message ("Renamed..."/"Skipped...")
+# auto-deletes from the Telegram chat after this many seconds — keeps the
+# chat tidy instead of accumulating a permanent scrollback of every past
+# rename. This ONLY removes the Telegram message; logs/activity.log is
+# untouched and remains the full permanent record either way. Set to 0 to
+# disable auto-delete and keep every message in the chat.
+TELEGRAM_AUTO_DELETE_SECONDS = 5
 
 # ============================================================
 # DUPLICATE DETECTION (Downloads, Pictures, Videos)

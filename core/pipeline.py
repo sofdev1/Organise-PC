@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 from collections import defaultdict
 from config import settings
-from utils import sorter, screenshots, converter, duplicates, renamer, ai_namer, approval_ui, telegram_bot
+from utils import sorter, screenshots, converter, duplicates, renamer, ai_namer, approval_ui, telegram_bot, ai_rename_registry
 from utils.logger import log_action
 
 # Duplicate hashes are tracked PER FOLDER (keyed by the file's actual parent
@@ -29,6 +29,14 @@ def _rename_with_ai_assist(file_path: Path) -> Path:
     Name_ext_date convention if AI naming is off/unavailable, the file type
     isn't supported, the API call fails, or the approval path rejects it.
     """
+    if ai_rename_registry.is_ai_named(file_path):
+        # Already has an AI-approved name from a previous run — don't burn
+        # a Gemini request re-suggesting a name for it (wastes quota, and
+        # a non-deterministic model can return a DIFFERENT name each time,
+        # which would otherwise keep renaming this file forever on every
+        # sweep even though nothing about it actually changed).
+        return file_path
+    
     suggested_stem = ai_namer.suggest_name(file_path)
 
     if suggested_stem:
