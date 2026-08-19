@@ -47,7 +47,7 @@ def _already_renamed(stem: str, ext: str) -> bool:
     return bool(pattern.match(stem))
 
 
-def rename_file(file_path: Path, override_stem: str = None) -> Path:
+def rename_file(file_path: Path, override_stem: str | None = None) -> Path:
     """Renames a single file into Name_ext_date format. Returns the new path.
 
     override_stem: if given (e.g. an AI-suggested, user-approved name), that

@@ -9,6 +9,13 @@ Important: this is fire-and-forget. core/pipeline.py sends the suggestion
 and immediately moves on to the next file — it never blocks waiting for you
 to tap a button. The file is left completely untouched until you respond:
 
+The bot stays SILENT until you send it /start. Even if the process is
+running and fully configured (token + chat id set), request_approval()
+reports "not ready" and callers fall back to the Windows dialog path for
+every file until the configured chat has sent /start at least once. This
+avoids the bot suddenly messaging you the moment the watcher launches,
+before you've actually opened the chat.
+
   * Tap "Approve"  -> the file is renamed right then, from inside the
                        Telegram callback handler (whenever that happens to be).
   * Tap "Skip"     -> the file is left with its original name, permanently
@@ -18,12 +25,15 @@ to tap a button. The file is left completely untouched until you respond:
   * Never tap      -> the file simply stays as-is until you do.
 
 Once you tap a button, the result message ("Renamed..." / "Skipped...")
-auto-deletes from the chat after settings.TELEGRAM_AUTO_DELETE_SECONDS —
-this only removes the Telegram message itself, logs/activity.log keeps
-the permanent record regardless.
+auto-deletes from the chat per settings.TELEGRAM_AUTO_DELETE_SECONDS
+(0 = instantly, right after you tap) — this only removes the Telegram
+message itself, logs/activity.log keeps the permanent record regardless.
 
 Also registers a small set of tappable slash-commands (/start, /help,
-/status, /pending, /skipall) — Telegram shows these in the "/" menu.
+/status, /pending, /skipall, /clearall) — Telegram shows these in the "/"
+menu. /clearall wipes every message the bot has sent in this chat at once
+(it cannot delete messages you typed — Telegram's Bot API only allows a
+bot to delete its own messages).
 
 Requires:
     pip install python-telegram-bot>=21.0
@@ -37,7 +47,7 @@ dialog for that file when that happens.
 import asyncio
 import threading
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Any, Dict, Tuple
 
 from config import settings
 from utils.logger import log_action
@@ -48,17 +58,19 @@ try:
     from telegram.constants import ParseMode
 except Exception:
     # Covers: python-telegram-bot not installed.
-    InlineKeyboardButton = None
-    InlineKeyboardMarkup = None
-    BotCommand = None
-    Application = None
-    CallbackQueryHandler = None
-    CommandHandler = None
-    ParseMode = None
+    # Use Any so type-checkers don't treat the later attribute access as
+    # happening on a None literal when the optional dependency is absent.
+    InlineKeyboardButton: Any = None
+    InlineKeyboardMarkup: Any = None
+    BotCommand: Any = None
+    Application: Any = None
+    CallbackQueryHandler: Any = None
+    CommandHandler: Any = None
+    ParseMode: Any = None
 
 
-_loop = None  # asyncio event loop the bot runs on, in its own thread
-_app = None  # telegram.ext.Application instance
+_loop: Any = None  # asyncio event loop the bot runs on, in its own thread
+_app: Any = None  # telegram.ext.Application instance
 _thread = None
 _lock = threading.Lock()
 
@@ -66,12 +78,19 @@ _lock = threading.Lock()
 _PENDING: Dict[str, Tuple[str, str, str, str]] = {}
 _next_id = 0
 
+# Every message the bot has sent this session, as (chat_id, message_id) —
+# lets /clearall wipe the whole chat on demand. Entries are removed once a
+# message is actually deleted (via auto-delete or /clearall itself) so we
+# never try to double-delete something that's already gone.
+_SENT_MESSAGE_IDS: list = []
+
 _COMMANDS = [
     ("start", "What this bot does"),
     ("help", "List commands"),
     ("status", "Current settings & pending count"),
     ("pending", "List files awaiting your approval"),
     ("skipall", "Skip every pending suggestion right now"),
+    ("clearall", "Erase every message this bot has sent in this chat"),
 ]
 
 
@@ -83,8 +102,15 @@ def _configured() -> bool:
     return bool(settings.TELEGRAM_ENABLED and settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_CHAT_ID)
 
 
+# Set True only once the configured chat sends /start. Until then,
+# request_approval() reports "not ready" so callers fall back to the dialog
+# path — the bot stays completely silent and sends nothing unprompted, even
+# if it's fully configured and running in the background.
+_user_started = False
+
+
 def _ready() -> bool:
-    return _package_ready() and _configured()
+    return _package_ready() and _configured() and _user_started
 
 
 def _is_authorized(update) -> bool:
@@ -100,19 +126,44 @@ def _is_authorized(update) -> bool:
         return False
 
 
+def _track_message(chat_id, message_id) -> None:
+    """Records a message the bot just sent, so /clearall can find it later."""
+    _SENT_MESSAGE_IDS.append((chat_id, message_id))
+
+
+async def _delete_message(chat_id, message_id) -> bool:
+    """Deletes one message right now. Returns True on success, False if it
+    was already gone/too old/otherwise undeletable (never raises)."""
+    try:
+        await _app.bot.delete_message(chat_id=chat_id, message_id=message_id)
+        return True
+    except Exception:
+        return False  # already deleted, edited away, >48h old, etc. — harmless
+
+
 async def _schedule_delete(chat_id, message_id, delay_seconds) -> None:
     """Deletes a Telegram message after a delay. Only removes it from the
     chat — logs/activity.log is untouched and remains the permanent record."""
-    try:
-        await asyncio.sleep(delay_seconds)
-        await _app.bot.delete_message(chat_id=chat_id, message_id=message_id)
-    except Exception:
-        pass  # message may have already been deleted/edited away — harmless
+    await asyncio.sleep(delay_seconds)
+    await _delete_message(chat_id, message_id)
+    if (chat_id, message_id) in _SENT_MESSAGE_IDS:
+        _SENT_MESSAGE_IDS.remove((chat_id, message_id))
 
 
 def _fire_delete(chat_id, message_id) -> None:
-    delay = getattr(settings, "TELEGRAM_AUTO_DELETE_SECONDS", 5)
-    if delay and delay > 0:
+    """Deletes a message per TELEGRAM_AUTO_DELETE_SECONDS: instantly if 0,
+    after a delay if >0, or not at all if explicitly set to None."""
+    delay = getattr(settings, "TELEGRAM_AUTO_DELETE_SECONDS", 0)
+    if delay is None:
+        return  # auto-delete explicitly disabled — leave the message in the chat
+
+    if delay <= 0:
+        async def _instant():
+            await _delete_message(chat_id, message_id)
+            if (chat_id, message_id) in _SENT_MESSAGE_IDS:
+                _SENT_MESSAGE_IDS.remove((chat_id, message_id))
+        asyncio.create_task(_instant())
+    else:
         asyncio.create_task(_schedule_delete(chat_id, message_id, delay))
 
 
@@ -156,21 +207,36 @@ async def _on_button(update, context):
 async def _cmd_start(update, context):
     if not _is_authorized(update):
         return
-    await update.message.reply_text(
-        "🤖 *Organise_PC*\n\n"
-        "I send AI rename suggestions here with Approve/Skip buttons. "
-        "Nothing gets renamed until you tap Approve — tap Skip (or ignore it) "
-        "and the file keeps its original name.\n\n"
-        "Send /help to see what else I can do.",
-        parse_mode=ParseMode.MARKDOWN,
-    )
+
+    global _user_started
+    already_started = _user_started
+    _user_started = True
+
+    if already_started:
+        text = (
+            "🤖 Already running — I'll keep sending AI rename suggestions here "
+            "with Approve/Skip buttons.\n\nSend /help to see what else I can do."
+        )
+    else:
+        text = (
+            "🤖 *Organise_PC*\n\n"
+            "Started! From now on I'll send AI rename suggestions here with "
+            "Approve/Skip buttons. Nothing gets renamed until you tap Approve — "
+            "tap Skip (or ignore it) and the file keeps its original name.\n\n"
+            "Send /help to see what else I can do."
+        )
+        log_action("Telegram: user sent /start — suggestions will now be sent to this chat.")
+
+    msg = await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+    _track_message(msg.chat_id, msg.message_id)
 
 
 async def _cmd_help(update, context):
     if not _is_authorized(update):
         return
     lines = "\n".join(f"/{name} — {desc}" for name, desc in _COMMANDS)
-    await update.message.reply_text(lines)
+    msg = await update.message.reply_text(lines)
+    _track_message(msg.chat_id, msg.message_id)
 
 
 async def _cmd_status(update, context):
@@ -182,21 +248,26 @@ async def _cmd_status(update, context):
         f"AI\\_RENAME\\_ENABLED: `{settings.AI_RENAME_ENABLED}`\n"
         f"AI\\_RENAME\\_AUTO\\_APPROVE: `{settings.AI_RENAME_AUTO_APPROVE}`\n"
         f"Approval mode: `{settings.AI_RENAME_APPROVAL_MODE}`\n"
-        f"Pending suggestions: `{len(_PENDING)}`"
+        f"Started (\\/start sent): `{_user_started}`\n"
+        f"Pending suggestions: `{len(_PENDING)}`\n"
+        f"Tracked messages: `{len(_SENT_MESSAGE_IDS)}`"
     )
-    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+    msg = await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+    _track_message(msg.chat_id, msg.message_id)
 
 
 async def _cmd_pending(update, context):
     if not _is_authorized(update):
         return
     if not _PENDING:
-        await update.message.reply_text("Nothing pending right now — all caught up.")
+        msg = await update.message.reply_text("Nothing pending right now — all caught up.")
+        _track_message(msg.chat_id, msg.message_id)
         return
     lines = ["Waiting on your approval:\n"]
     for _, (_, _, original_name, suggested_display_name) in _PENDING.items():
         lines.append(f"• {original_name} → {suggested_display_name}")
-    await update.message.reply_text("\n".join(lines))
+    msg = await update.message.reply_text("\n".join(lines))
+    _track_message(msg.chat_id, msg.message_id)
 
 
 async def _cmd_skipall(update, context):
@@ -206,7 +277,42 @@ async def _cmd_skipall(update, context):
     for _, (_, _, original_name, _) in list(_PENDING.items()):
         log_action(f"Telegram rename skipped (via /skipall) for {original_name} — left as-is.")
     _PENDING.clear()
-    await update.message.reply_text(f"Skipped {count} pending suggestion(s). All those files keep their original names.")
+    msg = await update.message.reply_text(
+        f"Skipped {count} pending suggestion(s). All those files keep their original names."
+    )
+    _track_message(msg.chat_id, msg.message_id)
+
+
+async def _cmd_clearall(update, context):
+    """Deletes every message the bot has sent in this chat this session —
+    suggestions, confirmations, and other command replies alike. Cannot
+    delete messages YOU typed (Telegram's Bot API doesn't allow bots to
+    delete other users' messages, even in a private chat)."""
+    if not _is_authorized(update):
+        return
+
+    chat_id = update.effective_chat.id
+    targets = [(cid, mid) for (cid, mid) in _SENT_MESSAGE_IDS if str(cid) == str(chat_id)]
+
+    deleted = 0
+    for cid, mid in targets:
+        if await _delete_message(cid, mid):
+            deleted += 1
+        if (cid, mid) in _SENT_MESSAGE_IDS:
+            _SENT_MESSAGE_IDS.remove((cid, mid))
+
+    skipped_pending = len(_PENDING)
+    _PENDING.clear()  # their suggestion messages are gone now too
+
+    log_action(f"Telegram: /clearall deleted {deleted} message(s), cleared {skipped_pending} pending suggestion(s).")
+
+    confirmation = await update.message.reply_text(
+        f"🧹 Cleared {deleted} message(s)."
+        + (f" ({skipped_pending} pending suggestion(s) also cleared — those files keep their original names.)"
+           if skipped_pending else "")
+    )
+    _track_message(confirmation.chat_id, confirmation.message_id)
+    _fire_delete(confirmation.chat_id, confirmation.message_id)  # don't leave the confirmation lingering either
 
 
 def _build_app():
@@ -217,6 +323,7 @@ def _build_app():
     app.add_handler(CommandHandler("status", _cmd_status))
     app.add_handler(CommandHandler("pending", _cmd_pending))
     app.add_handler(CommandHandler("skipall", _cmd_skipall))
+    app.add_handler(CommandHandler(getattr(settings, "TELEGRAM_CLEAR_ALL_COMMAND", "clearall"), _cmd_clearall))
     return app
 
 
@@ -305,9 +412,10 @@ def request_approval(file_path: Path, suggested_stem: str, suggested_display_nam
 
     async def _send():
         try:
-            await _app.bot.send_message(
+            sent = await _app.bot.send_message(
                 chat_id=settings.TELEGRAM_CHAT_ID, text=text, reply_markup=keyboard
             )
+            _track_message(sent.chat_id, sent.message_id)
         except Exception as e:
             log_action(f"Failed to send Telegram suggestion for {file_path.name}: {e}")
 

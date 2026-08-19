@@ -134,12 +134,19 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 # "dialog"   -> always use the Windows message box.
 AI_RENAME_APPROVAL_MODE = "telegram" if TELEGRAM_ENABLED else "dialog"
 # After you tap Approve/Skip, the result message ("Renamed..."/"Skipped...")
-# auto-deletes from the Telegram chat after this many seconds — keeps the
-# chat tidy instead of accumulating a permanent scrollback of every past
-# rename. This ONLY removes the Telegram message; logs/activity.log is
-# untouched and remains the full permanent record either way. Set to 0 to
-# disable auto-delete and keep every message in the chat.
-TELEGRAM_AUTO_DELETE_SECONDS = 5
+# auto-deletes from the Telegram chat. This ONLY removes the Telegram
+# message; logs/activity.log is untouched and remains the full permanent
+# record either way.
+#   0     -> delete INSTANTLY, right after you tap (no lingering confirmation)
+#   >0    -> delete after that many seconds (old behavior, e.g. 5 = 5s delay)
+#   None  -> disable auto-delete entirely, keep every message in the chat
+TELEGRAM_AUTO_DELETE_SECONDS = 0
+
+# Slash-command that wipes every message the bot has ever sent to this chat
+# (suggestions, confirmations, command replies — everything tracked this
+# session). Telegram's Bot API can only delete messages the BOT itself sent,
+# not ones you typed, and only within its usual ~48h deletion window.
+TELEGRAM_CLEAR_ALL_COMMAND = "clearall"
 
 # ============================================================
 # DUPLICATE DETECTION (Downloads, Pictures, Videos)
