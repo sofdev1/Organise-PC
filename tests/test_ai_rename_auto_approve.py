@@ -17,17 +17,22 @@ class AutoApproveAiRenameTest(unittest.TestCase):
             file_path = Path(tmp.name)
 
         try:
-            with patch.object(pipeline, "sorter") as mock_sorter, \
-                 patch.object(pipeline.ai_namer, "suggest_name", return_value="quarterly_sales"), \
-                 patch.object(pipeline.renamer, "rename_file", return_value=file_path) as mock_rename, \
-                 patch.object(pipeline.approval_ui, "confirm_rename") as mock_confirm:
+            with patch.object(pipeline, "sorter") as mock_sorter, patch.object(
+                pipeline.ai_namer, "suggest_name", return_value="quarterly_sales"
+            ), patch.object(
+                pipeline.renamer, "rename_file", return_value=file_path
+            ) as mock_rename, patch.object(
+                pipeline.approval_ui, "confirm_rename"
+            ) as mock_confirm:
                 mock_sorter.sort_file.return_value = file_path
                 mock_sorter._is_excluded.return_value = False
 
                 pipeline.process_downloads_file(file_path)
 
                 mock_confirm.assert_not_called()
-                mock_rename.assert_called_once_with(file_path, override_stem="quarterly_sales")
+                mock_rename.assert_called_once_with(
+                    file_path, override_stem="quarterly_sales"
+                )
         finally:
             file_path.unlink(missing_ok=True)
 
@@ -50,10 +55,15 @@ class AutoApproveAiRenameTest(unittest.TestCase):
             file_path = Path(tmp.name)
 
         try:
-            with patch.object(pipeline, "screenshots") as mock_screenshots, \
-                 patch.object(pipeline, "converter") as mock_converter, \
-                 patch.object(pipeline, "duplicates") as mock_duplicates, \
-                 patch.object(pipeline.renamer, "rename_file", return_value=file_path) as mock_rename:
+            with patch.object(
+                pipeline, "screenshots"
+            ) as mock_screenshots, patch.object(
+                pipeline, "converter"
+            ) as mock_converter, patch.object(
+                pipeline, "duplicates"
+            ) as mock_duplicates, patch.object(
+                pipeline.renamer, "rename_file", return_value=file_path
+            ) as mock_rename:
                 mock_screenshots.is_screenshot.return_value = False
                 mock_duplicates.check_and_flag_duplicate.return_value = False
 

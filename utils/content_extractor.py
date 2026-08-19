@@ -112,4 +112,6 @@ def is_ai_nameable(file_path: Path) -> bool:
     ext = file_path.suffix.lower()
     if ext not in settings.AI_RENAME_EXTENSIONS:
         return False
-    return ext in (TEXT_EXTENSIONS | PDF_EXTENSIONS | DOCX_EXTENSIONS | IMAGE_EXTENSIONS)
+    return ext in (
+        TEXT_EXTENSIONS | PDF_EXTENSIONS | DOCX_EXTENSIONS | IMAGE_EXTENSIONS
+    )

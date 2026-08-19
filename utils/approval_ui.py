@@ -55,7 +55,9 @@ def _ask_windows(original_name: str, suggested_display_name: str) -> bool:
     except AttributeError:
         # Extremely old/locked-down systems without MessageBoxTimeoutW —
         # fall back to a plain (non-timing-out) MessageBoxW.
-        result = user32.MessageBoxW(0, text, "Organise_PC — AI rename suggestion", flags)
+        result = user32.MessageBoxW(
+            0, text, "Organise_PC — AI rename suggestion", flags
+        )
 
     if result == _IDTIMEOUT:
         log_action(f"AI rename prompt timed out for {original_name} — defaulting to No")
@@ -82,7 +84,9 @@ def confirm_rename(original_name: str, suggested_display_name: str) -> bool:
     defaults to False so the pipeline falls back to the standard rename.
     When auto-approval is enabled, the dialog is bypassed entirely."""
     if settings.AI_RENAME_AUTO_APPROVE:
-        log_action(f"AI rename auto-approved for {original_name}: {suggested_display_name}")
+        log_action(
+            f"AI rename auto-approved for {original_name}: {suggested_display_name}"
+        )
         return True
 
     try:

@@ -39,7 +39,9 @@ def _acquire_single_instance_lock() -> bool:
 
 if __name__ == "__main__":
     if not _acquire_single_instance_lock():
-        print("PC Automation Suite is already running (another instance holds the lock).")
+        print(
+            "PC Automation Suite is already running (another instance holds the lock)."
+        )
         print("Check Task Manager for an existing pythonw.exe / python.exe process, or")
         print("check logs/activity.log for the currently running instance's activity.")
         sys.exit(0)

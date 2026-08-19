@@ -133,7 +133,9 @@ def suggest_name(file_path: Path) -> Optional[str]:
         return None
     if _is_ai_paused():
         remaining = max(0, int(_AI_PAUSED_UNTIL - time.time()))
-        log_action(f"AI rename cooldown active for {remaining}s; waiting before next Gemini request.")
+        log_action(
+            f"AI rename cooldown active for {remaining}s; waiting before next Gemini request."
+        )
         return None
 
     try:

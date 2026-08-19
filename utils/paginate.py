@@ -20,7 +20,7 @@ def paginate_actions(actions, page_size: int = PAGE_SIZE, title: str = "Changes"
     print(f"\n{title}: {total} total\n" + "=" * 50)
 
     for i in range(0, total, page_size):
-        page = actions[i:i + page_size]
+        page = actions[i : i + page_size]
         start_num = i + 1
         end_num = min(i + page_size, total)
 
@@ -34,8 +34,16 @@ def paginate_actions(actions, page_size: int = PAGE_SIZE, title: str = "Changes"
             break
 
         print("-" * 50)
-        user_input = input(f"Showing {start_num}-{end_num} of {total}. "
-                            f"Press Enter for next {min(page_size, remaining)} (or 'q' to stop): ").strip().lower()
+        user_input = (
+            input(
+                f"Showing {start_num}-{end_num} of {total}. "
+                f"Press Enter for next {min(page_size, remaining)} (or 'q' to stop): "
+            )
+            .strip()
+            .lower()
+        )
         if user_input == "q":
-            print(f"Stopped. {remaining} more item(s) were not shown here — full list is in logs/activity.log\n")
+            print(
+                f"Stopped. {remaining} more item(s) were not shown here — full list is in logs/activity.log\n"
+            )
             break

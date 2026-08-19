@@ -13,7 +13,17 @@ import os
 from pathlib import Path
 from collections import defaultdict
 from config import settings
-from utils import sorter, screenshots, converter, duplicates, renamer, ai_namer, approval_ui, telegram_bot, ai_rename_registry
+from utils import (
+    sorter,
+    screenshots,
+    converter,
+    duplicates,
+    renamer,
+    ai_namer,
+    approval_ui,
+    telegram_bot,
+    ai_rename_registry,
+)
 from utils.logger import log_action
 
 # Duplicate hashes are tracked PER FOLDER (keyed by the file's actual parent
@@ -36,17 +46,21 @@ def _rename_with_ai_assist(file_path: Path) -> Path:
         # which would otherwise keep renaming this file forever on every
         # sweep even though nothing about it actually changed).
         return file_path
-    
+
     suggested_stem = ai_namer.suggest_name(file_path)
 
     if suggested_stem:
         suggested_display_name = f"{suggested_stem}{file_path.suffix}"
         if settings.AI_RENAME_AUTO_APPROVE:
-            log_action(f"AI rename auto-approved for {file_path.name}: {suggested_display_name}")
+            log_action(
+                f"AI rename auto-approved for {file_path.name}: {suggested_display_name}"
+            )
             return renamer.rename_file(file_path, override_stem=suggested_stem)
 
         if settings.AI_RENAME_APPROVAL_MODE == "telegram":
-            sent = telegram_bot.request_approval(file_path, suggested_stem, suggested_display_name)
+            sent = telegram_bot.request_approval(
+                file_path, suggested_stem, suggested_display_name
+            )
             if sent:
                 # Fire-and-forget: the suggestion is now sitting in Telegram
                 # with Approve/Skip buttons. We do NOT wait for a reply and
@@ -63,7 +77,9 @@ def _rename_with_ai_assist(file_path: Path) -> Path:
         approved = approval_ui.confirm_rename(file_path.name, suggested_display_name)
         if approved:
             return renamer.rename_file(file_path, override_stem=suggested_stem)
-        log_action(f"AI rename declined for {file_path.name} — using standard convention")
+        log_action(
+            f"AI rename declined for {file_path.name} — using standard convention"
+        )
 
     return renamer.rename_file(file_path)
 
@@ -77,7 +93,9 @@ def process_downloads_file(file_path: Path):
 
     if settings.DUPLICATE_CHECK_ENABLED:
         folder_key = str(file_path.parent)
-        is_dup = duplicates.check_and_flag_duplicate(file_path, _KNOWN_HASHES[folder_key])
+        is_dup = duplicates.check_and_flag_duplicate(
+            file_path, _KNOWN_HASHES[folder_key]
+        )
         if is_dup:
             return  # duplicate moved out — nothing left to rename
 
@@ -104,7 +122,9 @@ def process_media_file(file_path: Path):
 
     if settings.DUPLICATE_CHECK_ENABLED:
         folder_key = str(file_path.parent)
-        is_dup = duplicates.check_and_flag_duplicate(file_path, _KNOWN_HASHES[folder_key])
+        is_dup = duplicates.check_and_flag_duplicate(
+            file_path, _KNOWN_HASHES[folder_key]
+        )
         if is_dup:
             return
 
@@ -127,8 +147,7 @@ def run_initial_sweep():
         for root, dirnames, filenames in os.walk(settings.DOWNLOADS_FOLDER):
             root_path = Path(root)
             dirnames[:] = [
-                d for d in dirnames
-                if not sorter._is_excluded(root_path / d)
+                d for d in dirnames if not sorter._is_excluded(root_path / d)
             ]
             for name in sorted(filenames):
                 downloads_files.append(root_path / name)

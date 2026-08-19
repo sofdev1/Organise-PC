@@ -84,11 +84,19 @@ RENAME_DATE_FORMAT = "%d%m%Y"
 AI_RENAME_ENABLED = True  # <-- flip to True once GEMINI_API_KEY is set
 AI_RENAME_MODEL = "gemini-3.5-flash-lite"  # free-tier friendly, fast naming model
 AI_RENAME_EXTENSIONS = [
-    ".pdf", ".docx", ".txt", ".csv", ".md",
-    ".jpg", ".jpeg", ".png",
+    ".pdf",
+    ".docx",
+    ".txt",
+    ".csv",
+    ".md",
+    ".jpg",
+    ".jpeg",
+    ".png",
 ]
 AI_RENAME_PREVIEW_CHARS = 3000  # how much text content to send per file
-AI_RENAME_MAX_IMAGE_MB = 5  # images larger than this skip AI naming (still gets standard rename)
+AI_RENAME_MAX_IMAGE_MB = (
+    5  # images larger than this skip AI naming (still gets standard rename)
+)
 AI_RENAME_MAX_WORDS = 6
 AI_RENAME_MAX_CHARS = 60  # hard cap on the suggested filename stem length
 AI_RENAME_TIMEOUT_SECONDS = 15  # API call timeout

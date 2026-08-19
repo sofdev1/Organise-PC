@@ -99,7 +99,11 @@ def _package_ready() -> bool:
 
 
 def _configured() -> bool:
-    return bool(settings.TELEGRAM_ENABLED and settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_CHAT_ID)
+    return bool(
+        settings.TELEGRAM_ENABLED
+        and settings.TELEGRAM_BOT_TOKEN
+        and settings.TELEGRAM_CHAT_ID
+    )
 
 
 # Set True only once the configured chat sends /start. Until then,
@@ -158,10 +162,12 @@ def _fire_delete(chat_id, message_id) -> None:
         return  # auto-delete explicitly disabled — leave the message in the chat
 
     if delay <= 0:
+
         async def _instant():
             await _delete_message(chat_id, message_id)
             if (chat_id, message_id) in _SENT_MESSAGE_IDS:
                 _SENT_MESSAGE_IDS.remove((chat_id, message_id))
+
         asyncio.create_task(_instant())
     else:
         asyncio.create_task(_schedule_delete(chat_id, message_id, delay))
@@ -182,7 +188,9 @@ async def _on_button(update, context):
     action, _, request_id = (query.data or "").partition(":")
     entry = _PENDING.pop(request_id, None)
     if entry is None:
-        await query.edit_message_text("This suggestion already expired or was already handled.")
+        await query.edit_message_text(
+            "This suggestion already expired or was already handled."
+        )
         _fire_delete(query.message.chat_id, query.message.message_id)
         return
 
@@ -191,12 +199,18 @@ async def _on_button(update, context):
 
     if action == "approve":
         if not file_path.exists():
-            log_action(f"Telegram approval for {original_name} arrived too late — file no longer exists.")
-            await query.edit_message_text(f"⚠️ {original_name} no longer exists — nothing to rename.")
+            log_action(
+                f"Telegram approval for {original_name} arrived too late — file no longer exists."
+            )
+            await query.edit_message_text(
+                f"⚠️ {original_name} no longer exists — nothing to rename."
+            )
         else:
             new_path = renamer.rename_file(file_path, override_stem=suggested_stem)
             log_action(f"Telegram-approved rename: {original_name} -> {new_path.name}")
-            await query.edit_message_text(f"✅ Renamed:\n{original_name}\n→ {new_path.name}")
+            await query.edit_message_text(
+                f"✅ Renamed:\n{original_name}\n→ {new_path.name}"
+            )
     else:
         log_action(f"Telegram rename skipped by user for {original_name} — left as-is.")
         await query.edit_message_text(f"⏭️ Skipped — kept as:\n{original_name}")
@@ -225,7 +239,9 @@ async def _cmd_start(update, context):
             "tap Skip (or ignore it) and the file keeps its original name.\n\n"
             "Send /help to see what else I can do."
         )
-        log_action("Telegram: user sent /start — suggestions will now be sent to this chat.")
+        log_action(
+            "Telegram: user sent /start — suggestions will now be sent to this chat."
+        )
 
     msg = await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
     _track_message(msg.chat_id, msg.message_id)
@@ -260,7 +276,9 @@ async def _cmd_pending(update, context):
     if not _is_authorized(update):
         return
     if not _PENDING:
-        msg = await update.message.reply_text("Nothing pending right now — all caught up.")
+        msg = await update.message.reply_text(
+            "Nothing pending right now — all caught up."
+        )
         _track_message(msg.chat_id, msg.message_id)
         return
     lines = ["Waiting on your approval:\n"]
@@ -275,7 +293,9 @@ async def _cmd_skipall(update, context):
         return
     count = len(_PENDING)
     for _, (_, _, original_name, _) in list(_PENDING.items()):
-        log_action(f"Telegram rename skipped (via /skipall) for {original_name} — left as-is.")
+        log_action(
+            f"Telegram rename skipped (via /skipall) for {original_name} — left as-is."
+        )
     _PENDING.clear()
     msg = await update.message.reply_text(
         f"Skipped {count} pending suggestion(s). All those files keep their original names."
@@ -292,7 +312,9 @@ async def _cmd_clearall(update, context):
         return
 
     chat_id = update.effective_chat.id
-    targets = [(cid, mid) for (cid, mid) in _SENT_MESSAGE_IDS if str(cid) == str(chat_id)]
+    targets = [
+        (cid, mid) for (cid, mid) in _SENT_MESSAGE_IDS if str(cid) == str(chat_id)
+    ]
 
     deleted = 0
     for cid, mid in targets:
@@ -304,15 +326,22 @@ async def _cmd_clearall(update, context):
     skipped_pending = len(_PENDING)
     _PENDING.clear()  # their suggestion messages are gone now too
 
-    log_action(f"Telegram: /clearall deleted {deleted} message(s), cleared {skipped_pending} pending suggestion(s).")
+    log_action(
+        f"Telegram: /clearall deleted {deleted} message(s), cleared {skipped_pending} pending suggestion(s)."
+    )
 
     confirmation = await update.message.reply_text(
         f"🧹 Cleared {deleted} message(s)."
-        + (f" ({skipped_pending} pending suggestion(s) also cleared — those files keep their original names.)"
-           if skipped_pending else "")
+        + (
+            f" ({skipped_pending} pending suggestion(s) also cleared — those files keep their original names.)"
+            if skipped_pending
+            else ""
+        )
     )
     _track_message(confirmation.chat_id, confirmation.message_id)
-    _fire_delete(confirmation.chat_id, confirmation.message_id)  # don't leave the confirmation lingering either
+    _fire_delete(
+        confirmation.chat_id, confirmation.message_id
+    )  # don't leave the confirmation lingering either
 
 
 def _build_app():
@@ -323,7 +352,11 @@ def _build_app():
     app.add_handler(CommandHandler("status", _cmd_status))
     app.add_handler(CommandHandler("pending", _cmd_pending))
     app.add_handler(CommandHandler("skipall", _cmd_skipall))
-    app.add_handler(CommandHandler(getattr(settings, "TELEGRAM_CLEAR_ALL_COMMAND", "clearall"), _cmd_clearall))
+    app.add_handler(
+        CommandHandler(
+            getattr(settings, "TELEGRAM_CLEAR_ALL_COMMAND", "clearall"), _cmd_clearall
+        )
+    )
     return app
 
 
@@ -382,10 +415,14 @@ def start() -> None:
         _thread = threading.Thread(target=_run_loop, daemon=True, name="telegram-bot")
         _thread.start()
 
-    log_action("Telegram approval bot started — AI rename suggestions will be sent there.")
+    log_action(
+        "Telegram approval bot started — AI rename suggestions will be sent there."
+    )
 
 
-def request_approval(file_path: Path, suggested_stem: str, suggested_display_name: str) -> bool:
+def request_approval(
+    file_path: Path, suggested_stem: str, suggested_display_name: str
+) -> bool:
     """Sends an Approve/Skip suggestion to Telegram and returns immediately —
     it does NOT wait for a reply. Returns True once the send has been
     queued, False if Telegram isn't available right now (not configured,
@@ -398,12 +435,19 @@ def request_approval(file_path: Path, suggested_stem: str, suggested_display_nam
     with _lock:
         _next_id += 1
         request_id = str(_next_id)
-    _PENDING[request_id] = (str(file_path), suggested_stem, file_path.name, suggested_display_name)
+    _PENDING[request_id] = (
+        str(file_path),
+        suggested_stem,
+        file_path.name,
+        suggested_display_name,
+    )
 
     keyboard = InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("✅ Approve", callback_data=f"approve:{request_id}"),
+                InlineKeyboardButton(
+                    "✅ Approve", callback_data=f"approve:{request_id}"
+                ),
                 InlineKeyboardButton("⏭️ Skip", callback_data=f"skip:{request_id}"),
             ]
         ]
@@ -420,5 +464,7 @@ def request_approval(file_path: Path, suggested_stem: str, suggested_display_nam
             log_action(f"Failed to send Telegram suggestion for {file_path.name}: {e}")
 
     asyncio.run_coroutine_threadsafe(_send(), _loop)
-    log_action(f"Sent Telegram rename suggestion for {file_path.name}: {suggested_display_name}")
+    log_action(
+        f"Sent Telegram rename suggestion for {file_path.name}: {suggested_display_name}"
+    )
     return True
