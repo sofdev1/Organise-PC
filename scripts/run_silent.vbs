@@ -8,4 +8,4 @@ scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
 projectDir = fso.GetParentFolderName(scriptDir)
 
 objShell.CurrentDirectory = projectDir
-objShell.Run "pythonw.exe main.py", 0, False
+objShell.Run """C:\Users\Acer\Downloads\Projects\Organise_PC\tg-renamer\Scripts\pythonw.exe"" main.py", 0, False
