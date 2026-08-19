@@ -13,8 +13,8 @@ running alongside the first. This prevents duplicate/competing background
 processes from ever stacking up (e.g. one per login, or one per manual test run).
 """
 
-import sys
 import socket
+import sys
 
 from core import watcher
 

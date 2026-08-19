@@ -10,20 +10,12 @@ Order matters:
 """
 
 import os
-from pathlib import Path
 from collections import defaultdict
+from pathlib import Path
+
 from config import settings
-from utils import (
-    sorter,
-    screenshots,
-    converter,
-    duplicates,
-    renamer,
-    ai_namer,
-    approval_ui,
-    telegram_bot,
-    ai_rename_registry,
-)
+from utils import (ai_namer, ai_rename_registry, approval_ui, converter,
+                   duplicates, renamer, screenshots, sorter, telegram_bot)
 from utils.logger import log_action
 
 # Duplicate hashes are tracked PER FOLDER (keyed by the file's actual parent

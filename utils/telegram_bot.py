@@ -53,9 +53,9 @@ from config import settings
 from utils.logger import log_action
 
 try:
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
-    from telegram.ext import Application, CallbackQueryHandler, CommandHandler
+    from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
     from telegram.constants import ParseMode
+    from telegram.ext import Application, CallbackQueryHandler, CommandHandler
 except Exception:
     # Covers: python-telegram-bot not installed.
     # Use Any so type-checkers don't treat the later attribute access as
