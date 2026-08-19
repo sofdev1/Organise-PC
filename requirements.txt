@@ -1,7 +1,7 @@
 watchdog>=4.0.0
 pillow>=10.0.0
 pillow-heif>=0.15.0
-black
+black==26.5.1
 isort
 
 # AI-assisted rename (optional — only needed if AI_RENAME_ENABLED = True)
