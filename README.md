@@ -27,6 +27,32 @@ Automatically organizes, cleans, and maintains your **Downloads**, **Pictures**,
 pip install -r requirements.txt
 ```
 
+### AI-assisted renaming with a free Gemini API tier
+
+The optional AI renamer uses Google's Gemini API instead of Anthropic. Google
+currently lists Gemini 2.5 Flash-Lite with a free API tier, subject to rate
+limits. urlGemini API pricinghttps://ai.google.dev/gemini-api/docs/pricing
+
+1. Create a Gemini API key in Google AI Studio.
+2. Set it as the `GEMINI_API_KEY` environment variable.
+3. In `config/settings.py`, set:
+```python
+AI_RENAME_ENABLED = True
+AI_RENAME_MODEL = "gemini-3.5-flash-lite"
+```
+
+For PowerShell:
+```powershell
+$env:GEMINI_API_KEY="YOUR_API_KEY"
+python main.py
+```
+
+The AI step remains approval-based: Gemini only suggests a name. The Windows
+Yes/No dialog must approve the suggestion before the file is renamed. If the
+API is unavailable, rate-limited, or fails, the existing `Name_ext_date`
+renaming logic is used instead.
+
+
 ### 2. Install ffmpeg (for MOV → MP4 conversion)
 - Windows: [download ffmpeg](https://ffmpeg.org/download.html) and add it to your PATH
 - Or via winget: `winget install ffmpeg`

@@ -6,4 +6,5 @@ organise/
 .env
 logs/*.log
 logs/*.txt
+logs/*.json
 !logs/.gitkeep

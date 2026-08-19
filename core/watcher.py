@@ -11,6 +11,7 @@ from watchdog.observers import Observer
 
 from config import settings
 from core import maintenance, pipeline
+from utils import telegram_bot
 from utils.logger import log_action
 
 # Small delay before processing, so we don't grab a file mid-write (e.g. large downloads)
@@ -65,6 +66,10 @@ def start():
     log_action(f"Watching: {settings.DOWNLOADS_FOLDER}")
     log_action(f"Watching: {settings.PICTURES_FOLDER}")
     log_action(f"Watching: {settings.VIDEOS_FOLDER}")
+
+    # Start the Telegram approval bot (if configured) before the initial
+    # sweep, so any AI rename suggestions it generates have somewhere to go.
+    telegram_bot.start()
 
     # Initial sweep of existing files, so nothing already sitting there is missed
     pipeline.run_initial_sweep()

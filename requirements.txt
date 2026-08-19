@@ -3,3 +3,15 @@ pillow>=10.0.0
 pillow-heif>=0.15.0
 black
 isort
+
+# AI-assisted rename (optional — only needed if AI_RENAME_ENABLED = True)
+google-genai>=1.30.0
+pypdf>=4.0.0
+python-docx>=1.1.0
+
+# Telegram-based AI-rename approval (optional — only needed if
+# TELEGRAM_ENABLED = True)
+python-telegram-bot>=21.0
+
+# Loads GEMINI_API_KEY / TELEGRAM_* from a .env file automatically
+python-dotenv>=1.0.0

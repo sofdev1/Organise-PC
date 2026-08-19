@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from config import settings
+from utils import ai_rename_registry
 from utils.logger import log_action
 
 
@@ -46,47 +47,50 @@ def _already_renamed(stem: str, ext: str) -> bool:
     return bool(pattern.match(stem))
 
 
-def _is_excluded_extension(ext: str) -> bool:
-    """
-    True if this extension should never be renamed — driver/installer files
-    (legacy Windows cache extensions ending in "_", plus explicit ones like
-    .dll, .inf, .cat, .ini) can break if renamed, so RENAME_EXCLUDED_EXTENSIONS
-    keeps them untouched even when RENAME_ENABLED is True.
-    """
-    if ext.endswith("_"):
-        return True
-    excluded = getattr(settings, "RENAME_EXCLUDED_EXTENSIONS", [])
-    return ext.lower() in (e.lower() for e in excluded)
+def rename_file(file_path: Path, override_stem: str = None) -> Path:
+    """Renames a single file into Name_ext_date format. Returns the new path.
 
-
-def rename_file(file_path: Path) -> Path:
-    """Renames a single file into Name_ext_date format. Returns the new path."""
+    override_stem: if given (e.g. an AI-suggested, user-approved name), that
+    stem is used instead of the original filename's stem — everything else
+    (extension, timestamp, collision handling, DRY_RUN, logging) still
+    applies exactly as normal.
+    """
     if not file_path.is_file():
         return file_path
 
     stem = file_path.stem
     ext = file_path.suffix.lstrip(".")
 
-    if _is_excluded_extension(ext):
-        return file_path  # driver/installer-style extension — never rename
-
-    if _already_renamed(stem, ext):
+    if override_stem is None and _already_renamed(stem, ext):
         return file_path  # already in our format for this exact extension — skip
+
+    if override_stem is None and ai_rename_registry.is_ai_named(file_path):
+        # This exact file already has a human/AI-approved descriptive name
+        # from a previous run. We're only here now because THIS pass has no
+        # override_stem to offer (AI unavailable/declined/quota-limited) —
+        # that must never mean "treat it like an unrenamed file and stamp
+        # the ugly Name_ext_date convention on it", so leave it untouched.
+        return file_path
 
     timestamp = datetime.now().strftime(settings.RENAME_DATE_FORMAT)
     # Keep the original name clean: strip characters that are awkward in filenames
-    clean_stem = re.sub(r"[^\w\-]", "_", stem).strip("_") or "file"
+    if override_stem is not None:
+        # AI-approved name: use the clean suggested name as-is (no
+        # _<ext>_<date> suffix) — the user already approved this exact
+        # name, so we shouldn't decorate it further. Collision handling
+        # below still applies.
+        clean_stem = re.sub(r"[^\w\-]", "_", override_stem).strip("_") or "file"
+        new_name = f"{clean_stem}{file_path.suffix}"
+    else:
+        clean_stem = re.sub(r"[^\w\-]", "_", stem).strip("_") or "file"
+        new_name = f"{clean_stem}_{ext}_{timestamp}{file_path.suffix}"
 
-    new_name = f"{clean_stem}_{ext}_{timestamp}{file_path.suffix}"
     new_path = file_path.parent / new_name
 
     # Guard against collisions within the same run
     counter = 1
-    while new_path.exists():
-        new_path = (
-            file_path.parent
-            / f"{clean_stem}_{ext}_{timestamp}_{counter}{file_path.suffix}"
-        )
+    while new_path.exists() and new_path != file_path:
+        new_path = file_path.parent / f"{clean_stem}_{counter}{file_path.suffix}"
         counter += 1
 
     if settings.DRY_RUN:
@@ -101,4 +105,10 @@ def rename_file(file_path: Path) -> Path:
             )
             return file_path  # don't crash the whole run over one locked/permission-denied file
         log_action(f"Renamed: {file_path.name} -> {new_path.name}")
+        if override_stem is not None:
+            # This was an AI-approved rename — remember it forever, so a
+            # future run with AI unavailable never downgrades it back to
+            # the standard convention.
+            ai_rename_registry.forget(file_path)
+            ai_rename_registry.mark_ai_named(new_path)
         return new_path
