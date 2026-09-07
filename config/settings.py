@@ -39,11 +39,10 @@ DRY_RUN = False  # <-- Keep True until you've reviewed the logs. Set False to le
 DOWNLOADS_SORT_ENABLED = True
 
 DOWNLOADS_CATEGORY_MAP = {
-    "PDFs": [".pdf"],
     "Images": [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".heic", ".svg"],
     "Installers": [".exe", ".msi", ".dmg", ".pkg", ".apk"],
     "Zips": [".zip", ".rar", ".7z", ".tar", ".gz"],
-    "Documents": [".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".csv"],
+    "Documents": [".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".ppsx",".txt", ".csv", ".pdf"],
     "Videos": [".mp4", ".mkv", ".mov", ".avi", ".wmv"],
     "Audio": [".mp3", ".wav", ".flac", ".m4a"],
 }
