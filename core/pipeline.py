@@ -78,6 +78,7 @@ def _rename_with_ai_assist(file_path: Path) -> Path:
 
     return renamer.rename_file(file_path)
 
+
 def process_downloads_file(file_path: Path):
     if not file_path.exists() or not file_path.is_file():
         return

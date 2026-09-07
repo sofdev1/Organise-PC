@@ -88,7 +88,10 @@ def get_text_preview(file_path: Path) -> Optional[str]:
         return _read_docx_text(file_path, max_chars)
     return None
 
-def _rasterize_pdf_first_page(file_path: Path, max_bytes: int) -> Optional[Tuple[str, bytes]]:
+
+def _rasterize_pdf_first_page(
+    file_path: Path, max_bytes: int
+) -> Optional[Tuple[str, bytes]]:
     """Renders page 1 of a PDF to PNG bytes, for scanned/image-only PDFs
     where _read_pdf_text() found no usable text layer. Lets Gemini's vision
     input read the page the same way it reads a photo. Best-effort/silent:
@@ -107,7 +110,7 @@ def _rasterize_pdf_first_page(file_path: Path, max_bytes: int) -> Optional[Tuple
             page = pdf[0]
             # ~150 DPI (scale = dpi / 72) is plenty for a naming model to
             # read titles/headings without producing a huge payload.
-            bitmap = page.render(scale=150/72)
+            bitmap = page.render(scale=150 / 72)
             pil_image = bitmap.to_pil()
         finally:
             pdf.close()
@@ -122,6 +125,7 @@ def _rasterize_pdf_first_page(file_path: Path, max_bytes: int) -> Optional[Tuple
         return "image/png", data
     except Exception:
         return None  # encrypted / malformed / password-protected PDFs, etc.
+
 
 def get_image_payload(file_path: Path) -> Optional[Tuple[str, bytes]]:
     """Returns (media_type, raw_bytes) for supported image types, capped at
