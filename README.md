@@ -18,6 +18,7 @@ Automatically organizes, cleans, and maintains your **Downloads**, **Pictures**,
 | Crash-resilient file ops | All of the above | A single locked/permission-denied file is logged and skipped — it no longer halts the entire run |
 | Single-instance lock | Whole suite | Only one copy can ever run at a time — a second launch exits immediately instead of running alongside the first |
 | AI-suggested renaming | Downloads | Reads file content and suggests a descriptive name, with your approval (dialog or Telegram) — falls back to `Name_ext_date` if rejected/unavailable |
+| AI naming for scanned PDFs | Downloads | If a PDF has no real text layer (scanned/image-only), page 1 is rendered as an image and read by Gemini's vision input instead — see "AI-assisted renaming" below |
 | Telegram approval bot | Whole suite | Approve/reject rename suggestions from your phone; stays silent until you send it `/start`; supports instant message cleanup and `/clearall` |
 
 **Scope guarantee:** every action is confined to `Downloads`, `Pictures`, and `Videos`. Temp cleanup only touches the OS temp directory. Nothing else on your PC is read, moved, renamed, or deleted. Folders listed in `DOWNLOADS_EXCLUDED_FOLDERS` are skipped entirely — the walk never even enters them.
@@ -50,6 +51,18 @@ AI_RENAME_MODEL = "gemini-3.5-flash-lite"
 Only extensions listed in `AI_RENAME_EXTENSIONS` get content read — everything else always uses the standard convention untouched. `AI_RENAME_AUTO_APPROVE = True` skips the approval step entirely (renames instantly, no prompt) — leave it `False` if you want to review suggestions first.
 
 **The AI step is always approval-based unless auto-approve is on**: Gemini only *suggests* a name — nothing is renamed until you approve it, and it always falls back to the standard `Name_ext_date` naming if the API is unavailable, rate-limited, times out, or you reject the suggestion.
+
+### Scanned / image-only PDFs (vision fallback)
+
+Some PDFs — usually scanned documents or worksheets saved as PDF — have no real text layer at all, only a picture of text. Previously, this caused a bug where `content_extractor.py` would extract a blank/whitespace-only string, and Gemini would correctly (but unhelpfully) name every one of them `empty_document`.
+
+This is now fixed with two changes:
+1. `content_extractor.py`'s `_read_pdf_text()` now checks `combined.strip()` before returning text, so a whitespace-only extraction correctly returns `None` instead of a "technically not empty" string.
+2. When a PDF has no usable text (`None`), `get_image_payload()` now renders **page 1 to a PNG image** (via `pypdfium2`, ~150 DPI) and sends that to Gemini's vision input instead — the same path already used for photos. `ai_namer.py` needed no changes, since it already tries text first and falls back to an image payload automatically.
+
+Requires `pypdfium2>=4.30.0` (already in `requirements.txt` — no separate Poppler/system install needed, it ships a bundled renderer).
+
+If a PDF fails to rasterize too (encrypted, zero pages, corrupted, oversized render), it silently falls all the way back to the standard `Name_ext_date` convention — never left unrenamed or broken.
 
 ### 3. Choose how you approve: Windows dialog or Telegram
 
@@ -217,12 +230,24 @@ git push origin v1.0.0
 ## Auto-start on login (Windows)
 
 1. Run `scripts/install_startup.bat` (double-click it, or run from a terminal)
-2. It adds a shortcut to your Startup folder that launches the suite silently (no console window) using `pythonw.exe`
+2. It adds a shortcut to your Startup folder that runs `run_silent.vbs`, which launches `run_forever.bat` **hidden** (no console window)
 3. Restart your PC (or log out/in) to confirm it's running — check `logs/activity.log` for a new "Suite starting" entry
 
 To stop it from auto-starting, run `scripts/uninstall_startup.bat`.
 
-> Note: the paginated console prompts only work in an interactive terminal. When auto-started silently via `pythonw.exe` (no console window), pagination has nowhere to prompt, so the startup scan just runs straight through without stopping — the full record is still in `logs/activity.log`.
+### Crash recovery — `run_forever.bat`
+
+The suite auto-starts through a small restart loop rather than launching `main.py` directly:
+
+```
+Startup shortcut → run_silent.vbs → run_forever.bat → pythonw.exe main.py
+```
+
+`run_forever.bat` relaunches `main.py` automatically (after a 5-second pause) if it ever exits or crashes, so a single unhandled error doesn't require you to notice and restart it by hand. Both `run_forever.bat` and `run_silent.vbs` resolve the project folder's own location automatically (`%~dp0` / `projectDir`), so they keep working correctly even if you move the project to a different folder — no path to edit by hand.
+
+`run_forever.bat` uses `pythonw.exe` (not `python.exe`), so restarts never flash a console window, and `run_silent.vbs` runs the whole `.bat` with a hidden window (`0`), so nothing is ever visible even for the restart loop itself.
+
+> Note: the paginated console prompts only work in an interactive terminal. When auto-started silently (no console window), pagination has nowhere to prompt, so the startup scan just runs straight through without stopping — the full record is still in `logs/activity.log`.
 
 > macOS/Linux: use `cron` (`@reboot python3 /path/to/main.py`) or a `launchd`/`systemd` service instead — the Python code itself is cross-platform, only the auto-start scripts here are Windows-specific.
 
@@ -273,10 +298,11 @@ pc-automation-suite/
 │   ├── telegram_bot.py        # Telegram-based approval (alternative to the dialog)
 │   ├── paginate.py            # 20-at-a-time console pagination
 │   └── logger.py
+├── run_forever.bat             # Crash-restart loop: relaunches main.py via pythonw.exe if it ever exits
 ├── scripts/
 │   ├── install_startup.bat    # Adds auto-start shortcut
 │   ├── uninstall_startup.bat  # Removes it
-│   └── run_silent.vbs         # Launches main.py with no console window
+│   └── run_silent.vbs         # Launches run_forever.bat hidden (no console window)
 ├── tests/
 │   └── test_ai_rename_auto_approve.py
 ├── .github/
@@ -332,6 +358,17 @@ If it prints `Organise_PC is already running (another instance holds the lock)`,
 
 **`ModuleNotFoundError` or dependency errors after `pip install -r requirements.txt`**
 Make sure you're in a fresh virtual environment (`python -m venv venv`, then activate it) before installing — installing into a stale or wrong Python environment is the most common cause.
+
+**Lots of files getting AI-named `empty_document`.** This was a real bug, now fixed (see "Scanned / image-only PDFs" above): scanned PDFs with no text layer used to extract a whitespace-only string that Gemini correctly read as blank. If you're still seeing this after updating:
+1. Confirm `pypdfium2` is actually installed: `pip show pypdfium2` — if missing, run `pip install -r requirements.txt` again.
+2. Check `logs/activity.log` for the file in question — if the rasterization itself is silently failing (encrypted PDF, zero pages, oversized render), it falls back to the standard `Name_ext_date` convention instead, which is expected, not a bug.
+3. Any already-renamed `empty_document*.pdf` files from before the fix need to be renamed manually — the fix only affects files processed from now on.
+
+**Auto-start / `run_forever.bat` doesn't seem to keep the suite running.** Check that `run_silent.vbs` actually points at `run_forever.bat`, not `main.py` directly — open the file and confirm the last line references `run_forever.bat`. If you edited it manually, an absolute/incorrect path there will fail silently since there's no console window to show the error. Test the chain directly and visibly first:
+```powershell
+run_forever.bat
+```
+Leave it running in a visible terminal, then manually kill the `pythonw.exe`/`python.exe` process for `main.py` in Task Manager — you should see it relaunch within about 5 seconds. If it doesn't, check the path to `tg-renamer\Scripts\pythonw.exe` matches your actual venv location.
 
 ### Telegram
 
@@ -400,3 +437,12 @@ git diff core/pipeline.py
 - Only one instance of the suite can run at a time (enforced via a local port lock, `54891` by default). A second launch — whether manual or from a duplicate Startup entry — exits immediately rather than running alongside the first.
 - AI rename suggestions never bypass approval unless `AI_RENAME_AUTO_APPROVE = True` — rejecting, ignoring, or any failure along the way (extraction, API, timeout) always falls back to the standard `Name_ext_date` convention, never leaves a file unrenamed or in a broken state.
 - The Telegram bot only ever acts on the single configured `TELEGRAM_CHAT_ID` — messages from any other chat are ignored outright, even if someone finds the bot by its username.
+- Scanned/image-only PDFs are handled via a page-1 rasterization fallback (`pypdfium2`) when no text layer exists — see "Scanned / image-only PDFs" under AI-assisted renaming.
+- Auto-start now runs through `run_forever.bat`, which relaunches `main.py` automatically if it ever crashes or exits — see "Crash recovery" under Auto-start on login.
+
+## Recent changes
+
+| Date | Change | Files touched |
+|---|---|---|
+| 2026-09 | Fixed `empty_document` mis-naming on scanned PDFs; added vision-based fallback naming for PDFs with no text layer | `utils/content_extractor.py`, `requirements.txt` |
+| 2026-09 | Auto-start now goes through a crash-restart loop instead of launching `main.py` directly | `run_forever.bat`, `scripts/run_silent.vbs` |
