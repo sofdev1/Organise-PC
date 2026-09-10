@@ -38,11 +38,23 @@ _KNOWN_HASHES = defaultdict(dict)
 def _rename_with_ai_assist(file_path: Path) -> Path:
     """Tries an AI-suggested rename first; falls back to the standard
     Name_ext_date convention only if AI naming is off/unavailable or the
-    file type isn't supported. If a suggestion WAS made and the user (or
-    Telegram) rejects it, the file is left with its original name —
-    rejection is a decision, not a "try harder" signal.
+    file type isn't supported. If the user explicitly declines a
+    suggestion, the file is left exactly as-is (not renamed at all) and
+    remembered forever, so it's never re-suggested or silently renamed on
+    a later sweep.
     """
     if ai_rename_registry.is_ai_named(file_path):
+        # Already has an AI-approved name from a previous run — don't burn
+        # a Gemini request re-suggesting a name for it.
+        return file_path
+
+    if ai_rename_registry.is_declined(file_path):
+        # User already said no to this exact file — leave it alone forever.
+        return file_path
+
+    if renamer._already_renamed(file_path.stem, file_path.suffix.lstrip(".")):
+        # Already in the standard Name_ext_date convention from before this
+        # fix existed — leave it alone rather than re-suggesting.
         return file_path
 
     suggested_stem = ai_namer.suggest_name(file_path)
@@ -60,8 +72,8 @@ def _rename_with_ai_assist(file_path: Path) -> Path:
                 file_path, suggested_stem, suggested_display_name
             )
             if sent:
-                # Fire-and-forget — the Telegram callback handler decides
-                # rename vs. leave-alone when the button is tapped.
+                # Fire-and-forget — the Telegram callback handler (_on_button)
+                # decides approve/decline later, including marking a decline.
                 return file_path
             log_action(
                 f"Telegram approval unavailable for {file_path.name} — "
@@ -71,13 +83,19 @@ def _rename_with_ai_assist(file_path: Path) -> Path:
         approved = approval_ui.confirm_rename(file_path.name, suggested_display_name)
         if approved:
             return renamer.rename_file(file_path, override_stem=suggested_stem)
+
+        # Declined: leave the file exactly as-is, and remember it so this
+        # exact file is never re-suggested or renamed again.
+        ai_rename_registry.mark_declined(file_path)
         log_action(
-            f"AI rename declined for {file_path.name} — leaving filename unchanged"
+            f"AI rename declined for {file_path.name} — left with original name, will not ask again"
         )
         return file_path
 
+    # No AI suggestion was possible at all (disabled, unavailable, unsupported
+    # file type) — this is the ONLY case that still falls back to the plain
+    # naming convention.
     return renamer.rename_file(file_path)
-
 
 def process_downloads_file(file_path: Path):
     if not file_path.exists() or not file_path.is_file():

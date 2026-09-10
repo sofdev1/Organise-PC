@@ -6,8 +6,8 @@ Automatically organizes, cleans, and maintains your **Downloads**, **Pictures**,
 
 | Feature | Where | Behavior |
 |---|---|---|
-| Sort by file type | Downloads | Moves files into `PDFs/`, `Images/`, `Installers/`, `Zips/`, `Documents/`, `Videos/`, `Audio/` |
-| Sort Documents further by extension | Downloads | `Documents/` is split into `Documents/docx/`, `Documents/xlsx/`, `Documents/pdf/`, etc. — configurable |
+| Sort by file type | Downloads | Moves files into `Images/`, `Installers/`, `Zips/`, `Documents/`, `Videos/`, `Audio/` |
+| Sort Documents further by extension | Downloads | `Documents/` is split into `Documents/docx/`, `Documents/xlsx/`, `Documents/pdf/`, etc. — configurable. PDFs live here (`Documents/pdf/`), not in a separate top-level `PDFs/` folder. |
 | Auto-rename | Downloads | Renames sorted files to `Name_ext_DDMMYYYY` (e.g. `invoice_pdf_15082026.pdf`) |
 | Duplicate detection | Downloads, Pictures, Videos | Matches by file content (SHA-256), moves duplicates to a `Duplicates/` folder — only compares files within the **same destination folder**, not across the whole tree |
 | Screenshot organizer | Pictures, Videos | Detects filenames containing "screenshot", sorts into `Screenshots/<image\|video>/YYYY-MM/`, renames to `Screenshot_image_DDMMYYYY` |
@@ -17,7 +17,7 @@ Automatically organizes, cleans, and maintains your **Downloads**, **Pictures**,
 | Paginated startup report | Console | Every launch shows what changed, 20 items at a time — press Enter for the next page, or `q` to stop |
 | Crash-resilient file ops | All of the above | A single locked/permission-denied file is logged and skipped — it no longer halts the entire run |
 | Single-instance lock | Whole suite | Only one copy can ever run at a time — a second launch exits immediately instead of running alongside the first |
-| AI-suggested renaming | Downloads | Reads file content and suggests a descriptive name, with your approval (dialog or Telegram) — falls back to `Name_ext_date` if rejected/unavailable |
+| AI-suggested renaming | Downloads | Reads file content and suggests a descriptive name, with your approval (dialog or Telegram). If you decline, the file keeps its **original name** and is never re-suggested — see "Declining a suggestion" below |
 | AI naming for scanned PDFs | Downloads | If a PDF has no real text layer (scanned/image-only), page 1 is rendered as an image and read by Gemini's vision input instead — see "AI-assisted renaming" below |
 | Telegram approval bot | Whole suite | Approve/reject rename suggestions from your phone; stays silent until you send it `/start`; supports instant message cleanup and `/clearall` |
 
@@ -50,7 +50,17 @@ AI_RENAME_MODEL = "gemini-3.5-flash-lite"
 ```
 Only extensions listed in `AI_RENAME_EXTENSIONS` get content read — everything else always uses the standard convention untouched. `AI_RENAME_AUTO_APPROVE = True` skips the approval step entirely (renames instantly, no prompt) — leave it `False` if you want to review suggestions first.
 
-**The AI step is always approval-based unless auto-approve is on**: Gemini only *suggests* a name — nothing is renamed until you approve it, and it always falls back to the standard `Name_ext_date` naming if the API is unavailable, rate-limited, times out, or you reject the suggestion.
+**The AI step is always approval-based unless auto-approve is on**: Gemini only *suggests* a name — nothing is renamed until you approve it. If the API is unavailable, rate-limited, times out, or the file type isn't supported, it falls back to the standard `Name_ext_date` naming. **If you explicitly decline a suggestion, this is different — see below.**
+
+### Declining a suggestion
+
+Rejecting a suggestion (dialog "No", Telegram "Skip", or `/skipall`) means **leave this file's name exactly as it is** — it does not fall back to the `Name_ext_date` convention, and it is never re-suggested again, even after a restart.
+
+This is tracked in a small persisted file, `logs/ai_rename_declined.json` (same pattern as the existing `logs/ai_named_files.json` for approved names) — every declined file's full path is recorded there the moment you say no, so future sweeps (including the startup scan after a reboot) skip straight past it without calling Gemini again.
+
+Previously, declining actually renamed the file anyway to `Name_ext_date`, and — separately — nothing remembered the decision at all, so a restart would re-suggest a name for the same file over and over. Both are fixed by this registry.
+
+If you ever want a previously-declined file to be reconsidered by AI naming again, delete its entry from `logs/ai_rename_declined.json` (or clear the whole file to reset all declines).
 
 ### Scanned / image-only PDFs (vision fallback)
 
@@ -91,8 +101,8 @@ Once started, each suggestion arrives as a message with **Approve** / **Skip** b
 | `/help` | Lists all commands |
 | `/status` | Shows current settings, whether `/start` has been sent, pending suggestion count |
 | `/pending` | Lists files currently awaiting your approval |
-| `/skipall` | Skips every pending suggestion at once — those files keep their original names |
-| `/clearall` | Erases every message the bot has sent in this chat, all at once (see below) |
+| `/skipall` | Skips every pending suggestion at once — those files keep their original names and are remembered as declined, so they won't be re-suggested |
+| `/clearall` | Erases every message the bot has **ever** sent in this chat, all at once, across restarts (see below) |
 
 **Message cleanup:** after you tap Approve/Skip, the confirmation message is controlled by `TELEGRAM_AUTO_DELETE_SECONDS` in `config/settings.py`:
 - `0` (default) — deletes **instantly**, right when you tap, so the chat never accumulates a scrollback of old renames
@@ -101,7 +111,7 @@ Once started, each suggestion arrives as a message with **Approve** / **Skip** b
 
 This only ever removes the *Telegram message* — `logs/activity.log` always keeps the full permanent record regardless of what happens in the chat.
 
-**`/clearall`** wipes every message the bot has sent in that chat this session (suggestions, confirmations, other command replies) in one go — useful for tidying up after a busy sorting session, or as a global reset for the message history without touching any actual files or the log. Note: Telegram's Bot API only allows a bot to delete messages *it* sent — it can't delete messages you typed yourself.
+**`/clearall`** wipes every message the bot has sent in that chat — **including messages from before your last restart**, not just this session — in one go (suggestions, confirmations, other command replies). Useful for tidying up after a busy sorting session, or as a global reset for the message history without touching any actual files or the log. The list of sent messages is persisted to `logs/telegram_sent_messages.json` specifically so a restart doesn't lose track of older messages. Two limits, both from Telegram itself, not this project: a bot can only delete messages *it* sent, not ones you typed, and only if they're under ~48 hours old.
 
 ### 2. Install ffmpeg (for MOV → MP4 conversion)
 - Windows: [download ffmpeg](https://ffmpeg.org/download.html) and add it to your PATH
@@ -115,7 +125,7 @@ Open `config/settings.py` and check:
 - `DRY_RUN = True` — **keep this on for your first run**
 - `RENAME_DATE_FORMAT = "%d%m%Y"` — produces `DDMMYYYY` (e.g. `15082026` for 15 Aug 2026). Change to `"%Y%m%d"` for `YYYYMMDD` instead, if you ever prefer that.
 - `DOWNLOADS_EXCLUDED_FOLDERS = ["Projects"]` — add any other folder names inside Downloads you want left completely alone (e.g. the folder this project itself lives in)
-- `SUBSORT_BY_EXTENSION_CATEGORIES = ["Documents"]` — categories that get further split by extension (`Documents/docx/`, `Documents/xlsx/`, etc.). Add more category names here, or set to `[]` to disable.
+- `SUBSORT_BY_EXTENSION_CATEGORIES = ["Documents"]` — categories that get further split by extension (`Documents/docx/`, `Documents/xlsx/`, `Documents/pdf/`, etc.). PDFs are part of the `Documents` category in `DOWNLOADS_CATEGORY_MAP`, not a separate top-level category — add more category names here, or set to `[]` to disable.
 
 ### 4. Do a dry run first
 ```bash
@@ -370,6 +380,19 @@ run_forever.bat
 ```
 Leave it running in a visible terminal, then manually kill the `pythonw.exe`/`python.exe` process for `main.py` in Task Manager — you should see it relaunch within about 5 seconds. If it doesn't, check the path to `tg-renamer\Scripts\pythonw.exe` matches your actual venv location.
 
+**I killed `pythonw.exe` but it keeps coming back.** This is `run_forever.bat`'s crash-restart loop doing exactly what it's designed to do — you have to stop the loop itself first, or it just relaunches `pythonw.exe` within 5 seconds every time. Find and kill the `cmd.exe` running the loop, then the stray `pythonw.exe` processes:
+```powershell
+Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*run_forever*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+Get-Process pythonw -ErrorAction SilentlyContinue | Stop-Process -Force
+```
+If it's set to auto-start, it'll come back on your next login/restart regardless — that's expected. To stop that too, delete the Startup shortcut: `Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\Organise_PC.lnk"`. Re-running `scripts\install_startup.bat` recreates it whenever you want auto-start back.
+
+**A rejected AI rename suggestion keeps getting suggested again after every restart / renames itself anyway.** This was a real bug, now fixed. Two separate problems existed before the fix:
+1. Declining used to still rename the file (just to `Name_ext_date` instead of the AI's suggestion) — declining now leaves the file's name completely untouched.
+2. Nothing remembered that you'd already declined a file, so every sweep (especially the startup scan) called Gemini again and re-prompted. Declines are now persisted to `logs/ai_rename_declined.json` — see "Declining a suggestion" above.
+
+If you're still seeing repeat prompts after updating: confirm the file's full path actually appears in `logs/ai_rename_declined.json`, and check `logs/activity.log` for a line like `AI rename declined for <file> — left with original name, will not ask again` to confirm the decline was actually recorded at the time.
+
 ### Telegram
 
 **Bot doesn't send any suggestions, even though it's configured and running**
@@ -379,10 +402,10 @@ Did you send `/start` to the bot's chat? It's required — the bot stays complet
 Check the log for a startup line confirming the bot actually launched: `Select-String -Path .\logs\activity.log -Pattern "Telegram"`. If you instead see a line about `python-telegram-bot` not being installed, or `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` not being set, the suite has already silently fallen back to the Windows dialog for every file — fix the missing piece and restart.
 
 **`/clearall` didn't delete something I expected**
-It can only delete messages the bot itself sent — not messages you typed, and not anything older than Telegram's ~48-hour deletion window. Anything it does delete is removed from its internal tracking too, so a second `/clearall` right after should report 0.
+It can only delete messages the bot itself sent — not messages you typed — and only within Telegram's ~48-hour deletion window. It now persists its message list across restarts (`logs/telegram_sent_messages.json`), so it should catch old messages too; anything it does delete is removed from that tracking file, so a second `/clearall` right after should report 0.
 
 **A suggestion's Approve/Skip buttons don't do anything when tapped**
-Most likely the suite was restarted (or crashed) after the suggestion was sent — pending suggestions only live in memory for that run, so a restart clears them. The buttons will just report "already expired" if you tap them afterward; the file simply keeps its original name.
+Pending suggestions still only live in memory for the run that sent them — a restart before you tap a button clears the pending list, and the button will report "already expired." The file simply keeps its original name in that case, same as an explicit decline.
 
 ### Docker
 
@@ -435,10 +458,12 @@ git diff core/pipeline.py
 - Folders inside Downloads listed in `DOWNLOADS_EXCLUDED_FOLDERS` are pruned from the scan entirely (not just skipped file-by-file) — the suite never descends into them, so it's safe to keep the project itself inside Downloads.
 - If a file can't be renamed/moved/hashed (locked by another program, permission denied, etc.), it's logged as a failure in `logs/activity.log` and skipped — it no longer stops the rest of the run.
 - Only one instance of the suite can run at a time (enforced via a local port lock, `54891` by default). A second launch — whether manual or from a duplicate Startup entry — exits immediately rather than running alongside the first.
-- AI rename suggestions never bypass approval unless `AI_RENAME_AUTO_APPROVE = True` — rejecting, ignoring, or any failure along the way (extraction, API, timeout) always falls back to the standard `Name_ext_date` convention, never leaves a file unrenamed or in a broken state.
+- AI rename suggestions never bypass approval unless `AI_RENAME_AUTO_APPROVE = True`. If AI naming is unavailable/unsupported for a file, it falls back to the standard `Name_ext_date` convention. If you explicitly **decline** a suggestion, the file's name is left completely untouched instead, and it's remembered forever (`logs/ai_rename_declined.json`) so it's never re-suggested.
 - The Telegram bot only ever acts on the single configured `TELEGRAM_CHAT_ID` — messages from any other chat are ignored outright, even if someone finds the bot by its username.
 - Scanned/image-only PDFs are handled via a page-1 rasterization fallback (`pypdfium2`) when no text layer exists — see "Scanned / image-only PDFs" under AI-assisted renaming.
+- PDFs sort into `Downloads/Documents/pdf/`, alongside the other Documents sub-types — there's no separate top-level `PDFs/` folder anymore.
 - Auto-start now runs through `run_forever.bat`, which relaunches `main.py` automatically if it ever crashes or exits — see "Crash recovery" under Auto-start on login.
+- The Telegram bot's sent-message list (used by `/clearall`) is persisted to `logs/telegram_sent_messages.json`, so it survives restarts instead of only knowing about messages from the current run.
 
 ## Recent changes
 
@@ -446,3 +471,6 @@ git diff core/pipeline.py
 |---|---|---|
 | 2026-09 | Fixed `empty_document` mis-naming on scanned PDFs; added vision-based fallback naming for PDFs with no text layer | `utils/content_extractor.py`, `requirements.txt` |
 | 2026-09 | Auto-start now goes through a crash-restart loop instead of launching `main.py` directly | `run_forever.bat`, `scripts/run_silent.vbs` |
+| 2026-09 | PDFs now sort into `Documents/pdf/` instead of a separate top-level `PDFs/` folder | `config/settings.py` |
+| 2026-09 | Declining an AI rename suggestion now leaves the file's name untouched (instead of falling back to `Name_ext_date`) and is remembered forever, so the same file is never re-suggested — fixes repeat prompts after every restart | `core/pipeline.py`, `utils/ai_rename_registry.py`, `utils/telegram_bot.py` |
+| 2026-09 | `/clearall` now deletes messages across restarts, not just the current session, via a persisted sent-message list | `utils/telegram_bot.py` |

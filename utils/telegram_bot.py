@@ -44,6 +44,7 @@ False on any setup problem, and the pipeline falls back to the Windows
 dialog for that file when that happens.
 """
 
+import json
 import asyncio
 import threading
 from pathlib import Path
@@ -78,11 +79,34 @@ _lock = threading.Lock()
 _PENDING: Dict[str, Tuple[str, str, str, str]] = {}
 _next_id = 0
 
-# Every message the bot has sent this session, as (chat_id, message_id) —
-# lets /clearall wipe the whole chat on demand. Entries are removed once a
-# message is actually deleted (via auto-delete or /clearall itself) so we
-# never try to double-delete something that's already gone.
+import json
+
+# Every message the bot has ever sent, as [chat_id, message_id] pairs —
+# lets /clearall wipe the whole chat on demand, even across restarts.
+# Persisted to disk so a PC restart doesn't lose track of old messages
+# and leave /clearall only able to see messages from the current session.
+# Entries are removed once a message is actually deleted (via auto-delete
+# or /clearall itself) so we never try to double-delete something gone.
+_SENT_MESSAGES_FILE = settings.LOG_FOLDER / "telegram_sent_messages.json"
 _SENT_MESSAGE_IDS: list = []
+
+
+def _load_sent_messages() -> None:
+    global _SENT_MESSAGE_IDS
+    try:
+        data = json.loads(_SENT_MESSAGES_FILE.read_text(encoding="utf-8"))
+        _SENT_MESSAGE_IDS = [tuple(pair) for pair in data] if isinstance(data, list) else []
+    except (OSError, ValueError):
+        _SENT_MESSAGE_IDS = []
+
+
+def _save_sent_messages() -> None:
+    try:
+        _SENT_MESSAGES_FILE.write_text(
+            json.dumps(_SENT_MESSAGE_IDS), encoding="utf-8"
+        )
+    except OSError:
+        pass  # best-effort — a failed write just means /clearall misses a few
 
 _COMMANDS = [
     ("start", "What this bot does"),
@@ -133,6 +157,7 @@ def _is_authorized(update) -> bool:
 def _track_message(chat_id, message_id) -> None:
     """Records a message the bot just sent, so /clearall can find it later."""
     _SENT_MESSAGE_IDS.append((chat_id, message_id))
+    _save_sent_messages()
 
 
 async def _delete_message(chat_id, message_id) -> bool:
@@ -152,6 +177,7 @@ async def _schedule_delete(chat_id, message_id, delay_seconds) -> None:
     await _delete_message(chat_id, message_id)
     if (chat_id, message_id) in _SENT_MESSAGE_IDS:
         _SENT_MESSAGE_IDS.remove((chat_id, message_id))
+        _save_sent_messages()
 
 
 def _fire_delete(chat_id, message_id) -> None:
@@ -167,6 +193,7 @@ def _fire_delete(chat_id, message_id) -> None:
             await _delete_message(chat_id, message_id)
             if (chat_id, message_id) in _SENT_MESSAGE_IDS:
                 _SENT_MESSAGE_IDS.remove((chat_id, message_id))
+                _save_sent_messages()
 
         asyncio.create_task(_instant())
     else:
@@ -177,7 +204,7 @@ async def _on_button(update, context):
     # Local import: renamer -> ... avoids any import-order issues at module
     # load time, and keeps this module importable even if renamer someday
     # imports something telegram-adjacent.
-    from utils import renamer
+    from utils import renamer, ai_rename_registry
 
     query = update.callback_query
     await query.answer()
@@ -212,11 +239,11 @@ async def _on_button(update, context):
                 f"✅ Renamed:\n{original_name}\n→ {new_path.name}"
             )
     else:
+        ai_rename_registry.mark_declined(file_path)
         log_action(f"Telegram rename skipped by user for {original_name} — left as-is.")
         await query.edit_message_text(f"⏭️ Skipped — kept as:\n{original_name}")
 
     _fire_delete(query.message.chat_id, query.message.message_id)
-
 
 async def _cmd_start(update, context):
     if not _is_authorized(update):
@@ -292,7 +319,9 @@ async def _cmd_skipall(update, context):
     if not _is_authorized(update):
         return
     count = len(_PENDING)
-    for _, (_, _, original_name, _) in list(_PENDING.items()):
+    for _, (file_path_str, _, original_name, _) in list(_PENDING.items()):
+        from utils import ai_rename_registry
+        ai_rename_registry.mark_declined(Path(file_path_str))
         log_action(
             f"Telegram rename skipped (via /skipall) for {original_name} — left as-is."
         )
@@ -322,6 +351,7 @@ async def _cmd_clearall(update, context):
             deleted += 1
         if (cid, mid) in _SENT_MESSAGE_IDS:
             _SENT_MESSAGE_IDS.remove((cid, mid))
+    _save_sent_messages()
 
     skipped_pending = len(_PENDING)
     _PENDING.clear()  # their suggestion messages are gone now too
@@ -394,6 +424,8 @@ def start() -> None:
 
     if not settings.TELEGRAM_ENABLED:
         return
+
+    _load_sent_messages()
 
     if not _package_ready():
         log_action(

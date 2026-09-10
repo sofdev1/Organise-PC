@@ -78,3 +78,42 @@ def forget(path: Path) -> None:
         if resolved in cache:
             cache.discard(resolved)
             _save()
+
+_DECLINED_FILE = settings.LOG_FOLDER / "ai_rename_declined.json"
+_DECLINED_CACHE: Set[str] = None
+
+
+def _load_declined() -> Set[str]:
+    global _DECLINED_CACHE
+    if _DECLINED_CACHE is not None:
+        return _DECLINED_CACHE
+    try:
+        data = json.loads(_DECLINED_FILE.read_text(encoding="utf-8"))
+        _DECLINED_CACHE = set(data) if isinstance(data, list) else set()
+    except (OSError, ValueError):
+        _DECLINED_CACHE = set()
+    return _DECLINED_CACHE
+
+
+def _save_declined() -> None:
+    try:
+        _DECLINED_FILE.write_text(json.dumps(sorted(_DECLINED_CACHE)), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def is_declined(path: Path) -> bool:
+    """True if the user has already said 'no' to an AI rename suggestion
+    for this exact path — it should be left with its current name forever,
+    not re-suggested and not silently renamed to the standard convention
+    either."""
+    with _LOCK:
+        return _resolve(path) in _load_declined()
+
+
+def mark_declined(path: Path) -> None:
+    """Call the moment a user rejects an AI rename suggestion (dialog Skip,
+    or Telegram Skip button)."""
+    with _LOCK:
+        _load_declined().add(_resolve(path))
+        _save_declined()
