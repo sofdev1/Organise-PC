@@ -18,6 +18,7 @@ from utils import (
     ai_namer,
     ai_rename_registry,
     approval_ui,
+    archiver,
     converter,
     duplicates,
     renamer,
@@ -37,24 +38,24 @@ _KNOWN_HASHES = defaultdict(dict)
 
 def _rename_with_ai_assist(file_path: Path) -> Path:
     """Tries an AI-suggested rename first; falls back to the standard
-    Name_ext_date convention only if AI naming is off/unavailable or the
-    file type isn't supported. If the user explicitly declines a
-    suggestion, the file is left exactly as-is (not renamed at all) and
-    remembered forever, so it's never re-suggested or silently renamed on
-    a later sweep.
+    Name_ext_date convention if AI naming is off/unavailable, the file type
+    isn't supported, the API call fails, or the approval path rejects it.
     """
     if ai_rename_registry.is_ai_named(file_path):
         # Already has an AI-approved name from a previous run — don't burn
-        # a Gemini request re-suggesting a name for it.
-        return file_path
-
-    if ai_rename_registry.is_declined(file_path):
-        # User already said no to this exact file — leave it alone forever.
+        # a Gemini request re-suggesting a name for it (wastes quota, and
+        # a non-deterministic model can return a DIFFERENT name each time,
+        # which would otherwise keep renaming this file forever on every
+        # sweep even though nothing about it actually changed).
         return file_path
 
     if renamer._already_renamed(file_path.stem, file_path.suffix.lstrip(".")):
-        # Already in the standard Name_ext_date convention from before this
-        # fix existed — leave it alone rather than re-suggesting.
+        # Already in the standard Name_ext_date convention — most commonly
+        # because a previous run's AI suggestion was declined and fell back
+        # to this format. Without this check, every future sweep (including
+        # after a restart, via run_initial_sweep) would call Gemini again,
+        # get a fresh suggestion, and re-prompt for approval on a file the
+        # user has already made a decision about — forever.
         return file_path
 
     suggested_stem = ai_namer.suggest_name(file_path)
@@ -72,8 +73,12 @@ def _rename_with_ai_assist(file_path: Path) -> Path:
                 file_path, suggested_stem, suggested_display_name
             )
             if sent:
-                # Fire-and-forget — the Telegram callback handler (_on_button)
-                # decides approve/decline later, including marking a decline.
+                # Fire-and-forget: the suggestion is now sitting in Telegram
+                # with Approve/Skip buttons. We do NOT wait for a reply and
+                # we do NOT fall back to the standard convention here — the
+                # file is left exactly as-is. The actual rename (or the
+                # decision to leave it alone) happens later, inside the
+                # Telegram callback handler, whenever the button is tapped.
                 return file_path
             log_action(
                 f"Telegram approval unavailable for {file_path.name} — "
@@ -83,19 +88,12 @@ def _rename_with_ai_assist(file_path: Path) -> Path:
         approved = approval_ui.confirm_rename(file_path.name, suggested_display_name)
         if approved:
             return renamer.rename_file(file_path, override_stem=suggested_stem)
-
-        # Declined: leave the file exactly as-is, and remember it so this
-        # exact file is never re-suggested or renamed again.
-        ai_rename_registry.mark_declined(file_path)
         log_action(
-            f"AI rename declined for {file_path.name} — left with original name, will not ask again"
+            f"AI rename declined for {file_path.name} — using standard convention"
         )
-        return file_path
 
-    # No AI suggestion was possible at all (disabled, unavailable, unsupported
-    # file type) — this is the ONLY case that still falls back to the plain
-    # naming convention.
     return renamer.rename_file(file_path)
+
 
 def process_downloads_file(file_path: Path):
     if not file_path.exists() or not file_path.is_file():
@@ -103,6 +101,15 @@ def process_downloads_file(file_path: Path):
 
     if settings.DOWNLOADS_SORT_ENABLED:
         file_path = sorter.sort_file(file_path)
+
+    if file_path.suffix.lower() == ".zip":
+        extracted = archiver.extract_zip_archive(file_path)
+        if extracted is None:
+            return  # extracted (or would have, under DRY_RUN) — the zip is
+            # now a folder, or gone entirely, so there's nothing left here
+            # to duplicate-check or rename.
+        file_path = extracted  # extraction disabled/failed — treat as a
+        # normal file and fall through to the rest of the pipeline below.
 
     if settings.DUPLICATE_CHECK_ENABLED:
         folder_key = str(file_path.parent)

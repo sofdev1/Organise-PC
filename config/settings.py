@@ -42,7 +42,7 @@ DOWNLOADS_CATEGORY_MAP = {
     "Images": [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".heic", ".svg"],
     "Installers": [".exe", ".msi", ".dmg", ".pkg", ".apk"],
     "Zips": [".zip", ".rar", ".7z", ".tar", ".gz"],
-    "Documents": [".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".ppsx",".txt", ".csv", ".pdf"],
+    "Documents": [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".csv"],
     "Videos": [".mp4", ".mkv", ".mov", ".avi", ".wmv"],
     "Audio": [".mp3", ".wav", ".flac", ".m4a"],
 }
@@ -183,6 +183,18 @@ SCREENSHOT_DEST_FOLDER_NAME = "Screenshots"
 CONVERT_HEIC_TO_JPG = True
 CONVERT_MOV_TO_MP4 = True
 DELETE_ORIGINAL_AFTER_CONVERT = False  # keep True->False safe default: keeps originals
+
+# ============================================================
+# AUTO-EXTRACT ZIP ARCHIVES
+# Only .zip is supported (Python's built-in zipfile — no extra dependency
+# needed). .rar/.7z/.tar/.gz still just get SORTED into Zips/ untouched;
+# extracting those would need external tools (unrar, 7z, etc.) not
+# currently bundled with this project.
+# Extracted contents land in a subfolder next to the zip, inside Zips/,
+# e.g. Zips/report.zip -> Zips/report/...
+# ============================================================
+AUTO_EXTRACT_ZIPS = True
+DELETE_ZIP_AFTER_EXTRACT = False  # keep True->False safe default: keeps the .zip alongside the extracted folder
 
 # ============================================================
 # SYSTEM MAINTENANCE (scheduled, not event-driven)
